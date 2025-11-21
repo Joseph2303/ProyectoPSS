@@ -2,6 +2,15 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../api/mockApi'
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const WEEKDAY_MAP = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+/* Utilidad: convertir HH:MM a minutos desde medianoche */
+function timeToMinutes(t) {
+  if (!t) return null
+  const [h, m] = t.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  return h * 60 + m
+}
 
 /* FORMULARIO DE HORARIO */
 function ScheduleForm({ onSave, initial, employees, turns }) {
@@ -74,7 +83,10 @@ function ScheduleForm({ onSave, initial, employees, turns }) {
             <option value="">Seleccione un turno...</option>
             {turns.map(t => (
               <option key={t.id} value={t.id}>
-                {t.name}
+                {t.name}{' '}
+                {t.startTime && t.endTime
+                  ? `(${t.startTime} - ${t.endTime})`
+                  : ''}
               </option>
             ))}
           </select>
@@ -176,7 +188,19 @@ export default function SchedulesPage() {
   const [employees, setEmployees] = useState([])
   const [turns, setTurns] = useState([])
   const [editing, setEditing] = useState(null)
+
+  // buscador general (para tabla)
   const [search, setSearch] = useState('')
+
+  // filtros exclusivos del calendario
+  const [calEmployeeId, setCalEmployeeId] = useState('')
+  const [calTurnId, setCalTurnId] = useState('')
+  const [calDay, setCalDay] = useState('') // '' = todos
+
+  // filtros de fecha para calendario
+  const [calSingleDate, setCalSingleDate] = useState('') // fecha exacta
+  const [calRangeStart, setCalRangeStart] = useState('') // desde
+  const [calRangeEnd, setCalRangeEnd] = useState('') // hasta
 
   useEffect(() => {
     setSchedules(api.getSchedules())
@@ -208,17 +232,18 @@ export default function SchedulesPage() {
     refresh()
   }
 
-  // --- BUSCADOR POTENTE ---
-  const normalized = search.trim().toLowerCase()
-  const tokens = normalized.split(/\s+/).filter(Boolean)
-
+  // Enriquecer con empleado y turno
   const enrichedSchedules = schedules.map(s => {
     const emp = employees.find(e => e.id === s.employeeId) || {}
     const turn = turns.find(t => t.id === s.turnId) || {}
     return { ...s, _emp: emp, _turn: turn }
   })
 
-  const filteredSchedules = enrichedSchedules.filter(s => {
+  // ---------------- BUSCADOR GENERAL (TABLA) ----------------
+  const normalized = search.trim().toLowerCase()
+  const tokens = normalized.split(/\s+/).filter(Boolean)
+
+  const tableSchedules = enrichedSchedules.filter(s => {
     if (tokens.length === 0) return true
 
     const haystack = [
@@ -229,6 +254,8 @@ export default function SchedulesPage() {
       s.freeDay || '',
       s.startDate || '',
       s.endDate || '',
+      s._turn.startTime || '',
+      s._turn.endTime || '',
     ]
       .join(' ')
       .toLowerCase()
@@ -237,11 +264,132 @@ export default function SchedulesPage() {
   })
 
   const total = schedules.length
-  const visible = filteredSchedules.length
+  const visible = tableSchedules.length
+
+  // ---------------- FILTROS SOLO PARA CALENDARIO ----------------
+  const calendarSource = enrichedSchedules.filter(s => {
+    // Empleado
+    if (calEmployeeId && s.employeeId !== calEmployeeId) return false
+    // Turno
+    if (calTurnId && s.turnId !== calTurnId) return false
+    // Día (nombre)
+    if (calDay && (!s.days || !s.days.includes(calDay))) return false
+
+    // --- Filtro por fecha específica (tiene prioridad) ---
+    if (calSingleDate) {
+      const dStr = calSingleDate
+
+      // Validar rango de fechas del horario (startDate / endDate)
+      if (s.startDate && dStr < s.startDate) return false
+      if (s.endDate && dStr > s.endDate) return false
+
+      // Debe coincidir el día de la semana
+      const dObj = new Date(calSingleDate)
+      if (!Number.isNaN(dObj.getTime())) {
+        const weekdayName = WEEKDAY_MAP[dObj.getDay()] // Dom..Sáb
+        if (s.days && s.days.length && !s.days.includes(weekdayName)) {
+          return false
+        }
+      }
+      return true
+    }
+
+    // --- Filtro por rango de fechas (si no hay fecha específica) ---
+    if (calRangeStart || calRangeEnd) {
+      const rangeStart = calRangeStart || '0000-01-01'
+      const rangeEnd = calRangeEnd || '9999-12-31'
+      const schedStart = s.startDate || '0000-01-01'
+      const schedEnd = s.endDate || '9999-12-31'
+
+      const overlap = schedStart <= rangeEnd && schedEnd >= rangeStart
+      if (!overlap) return false
+    }
+
+    return true
+  })
+
+  // Construir estructura para el calendario compacto
+  const calendarByDay = {}
+  DAYS.forEach(d => {
+    calendarByDay[d] = []
+  })
+
+  calendarSource.forEach(s => {
+    const empName = s._emp.name || 'Sin nombre'
+    const turnName = s._turn.name || 'Turno'
+    const start = s._turn.startTime
+    const end = s._turn.endTime
+
+    const startM = timeToMinutes(start)
+    const endM = timeToMinutes(end)
+
+    if (startM == null || endM == null) {
+      return
+    }
+
+    const isOvernight = endM <= startM
+
+    s.days?.forEach(day => {
+      if (!DAYS.includes(day)) return
+
+      if (!isOvernight) {
+        calendarByDay[day].push({
+          key: s.id + '-' + day + '-normal',
+          empName,
+          turnName,
+          label: `${start}–${end}`,
+          continued: false,
+        })
+      } else {
+        // Día de inicio
+        calendarByDay[day].push({
+          key: s.id + '-' + day + '-overnight-start',
+          empName,
+          turnName,
+          label: `${start}–23:59`,
+          continued: false,
+        })
+
+        // Día siguiente
+        const idx = DAYS.indexOf(day)
+        const nextDay = DAYS[(idx + 1) % DAYS.length]
+
+        calendarByDay[nextDay].push({
+          key: s.id + '-' + day + '-overnight-continue',
+          empName,
+          turnName,
+          label: `00:00–${end}`,
+          continued: true,
+        })
+      }
+    })
+  })
+
+  // ---------------- FECHAS DE LA SEMANA PARA EL CALENDARIO ----------------
+  // baseDate:
+  // - si hay fecha específica, usamos esa
+  // - si no, pero hay rango desde, usamos el rango desde
+  // - si no, usamos hoy
+  let baseDate = new Date()
+  if (calSingleDate) {
+    const d = new Date(calSingleDate)
+    if (!Number.isNaN(d.getTime())) baseDate = d
+  } else if (calRangeStart) {
+    const d = new Date(calRangeStart)
+    if (!Number.isNaN(d.getTime())) baseDate = d
+  }
+
+  const jsDay = baseDate.getDay() // 0=Dom,1=Lun,...6=Sáb
+  const offset = (jsDay + 6) % 7 // convertimos a índice donde 0=Lun
+  const weekDates = DAYS.map((_, i) => {
+    const d = new Date(baseDate)
+    d.setDate(baseDate.getDate() - offset + i)
+    return d
+  })
 
   return (
     <div className="space-y-6">
-      {/* HEADER + BUSCADOR */}
+      {/* HEADER + BUSCADOR GENERAL */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">
@@ -278,14 +426,15 @@ export default function SchedulesPage() {
             </span>
             <input
               type="text"
-              placeholder="Buscar por empleado, turno o día..."
+              placeholder="Buscar para la tabla: empleado, turno o día..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full rounded-full border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
-            Ejemplos: <i>juan matutino lun vie</i>, <i>nocturno dom</i>.
+            Este buscador afecta la tabla de horarios. Ejemplos:{' '}
+            <i>juan matutino lun vie</i>, <i>nocturno dom</i>.
           </p>
         </div>
       </div>
@@ -303,7 +452,7 @@ export default function SchedulesPage() {
         <h4 className="px-4 pt-3 pb-2 text-sm font-semibold text-slate-700 border-b border-slate-100">
           Horarios existentes
         </h4>
-        <div className="max-h-[60vh] overflow-auto">
+        <div className="max-h-[50vh] overflow-auto">
           <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-xs uppercase tracking-wide text-slate-600">
@@ -317,7 +466,7 @@ export default function SchedulesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredSchedules.length === 0 && (
+              {tableSchedules.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}
@@ -328,7 +477,7 @@ export default function SchedulesPage() {
                 </tr>
               )}
 
-              {filteredSchedules.map(s => (
+              {tableSchedules.map(s => (
                 <tr
                   key={s.id}
                   className="border-b border-slate-100 hover:bg-slate-50 transition"
@@ -366,6 +515,189 @@ export default function SchedulesPage() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* CALENDARIO SEMANAL COMPACTO + FILTROS PROPIOS */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-4 pt-3 pb-2 border-b border-slate-100 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-slate-700">
+              Vista semanal compacta
+            </h4>
+            <p className="text-[11px] text-slate-400">
+              Filtros exclusivos para el calendario. Si seleccionas una fecha específica, se ignora el rango.
+            </p>
+          </div>
+
+          {/* Filtros del calendario */}
+          <div className="flex flex-wrap gap-3">
+            {/* Filtro empleado */}
+            <div className="flex flex-col gap-1 text-xs">
+              <span className="font-semibold text-slate-600">Empleado</span>
+              <select
+                value={calEmployeeId}
+                onChange={e => setCalEmployeeId(e.target.value)}
+                className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[160px]"
+              >
+                <option value="">Todos</option>
+                {employees.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro turno */}
+            <div className="flex flex-col gap-1 text-xs">
+              <span className="font-semibold text-slate-600">Turno</span>
+              <select
+                value={calTurnId}
+                onChange={e => setCalTurnId(e.target.value)}
+                className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[160px]"
+              >
+                <option value="">Todos</option>
+                {turns.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro día */}
+            <div className="flex flex-col gap-1 text-xs">
+              <span className="font-semibold text-slate-600">Día</span>
+              <select
+                value={calDay}
+                onChange={e => setCalDay(e.target.value)}
+                className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[120px]"
+              >
+                <option value="">Todos</option>
+                {DAYS.map(d => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro por fecha específica */}
+            <div className="flex flex-col gap-1 text-xs">
+              <span className="font-semibold text-slate-600">
+                Fecha específica
+              </span>
+              <input
+                type="date"
+                value={calSingleDate}
+                onChange={e => setCalSingleDate(e.target.value)}
+                className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <span className="text-[10px] text-slate-400">
+                Si seleccionas una fecha, se ignora el rango.
+              </span>
+            </div>
+
+            {/* Filtro por rango de fechas */}
+            <div className="flex flex-col gap-1 text-xs">
+              <span className="font-semibold text-slate-600">
+                Rango de fechas
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={calRangeStart}
+                  onChange={e => setCalRangeStart(e.target.value)}
+                  className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="text-[10px] text-slate-400">a</span>
+                <input
+                  type="date"
+                  value={calRangeEnd}
+                  onChange={e => setCalRangeEnd(e.target.value)}
+                  className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Solo aplica si no hay fecha específica seleccionada.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-auto">
+          <table className="min-w-full text-xs border-collapse">
+            <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <tr className="text-[11px] uppercase tracking-wide text-slate-600">
+                {DAYS.map((day, idx) => {
+                  const d = weekDates[idx]
+                  const dayNum = d.getDate()
+                  const monthNum = d.getMonth() + 1
+
+                  return (
+                    <th
+                      key={day}
+                      className="px-3 py-2 text-left min-w-[150px]"
+                    >
+                      <div className="flex flex-col">
+                        <span>{day}</span>
+                        <span className="text-[10px] font-normal text-slate-400">
+                          {String(dayNum).padStart(2, '0')}/
+                          {String(monthNum).padStart(2, '0')}
+                        </span>
+                      </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="align-top">
+                {DAYS.map(day => {
+                  const blocks = calendarByDay[day] || []
+                  return (
+                    <td
+                      key={day}
+                      className="px-3 py-3 align-top border-t border-slate-100"
+                    >
+                      {blocks.length === 0 ? (
+                        <span className="text-[10px] text-slate-300">
+                          Sin turnos
+                        </span>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {blocks.map(b => (
+                            <div
+                              key={b.key}
+                              className="rounded-md bg-blue-50 border border-blue-100 px-2 py-1 text-[11px] text-blue-900"
+                            >
+                              <div className="font-semibold truncate">
+                                {b.empName}
+                              </div>
+                              <div className="flex flex-wrap gap-1 items-center">
+                                <span className="px-1 rounded-full bg-blue-100 text-[10px]">
+                                  {b.label}
+                                </span>
+                                <span className="text-[10px}">
+                                  {b.turnName}
+                                </span>
+                                {b.continued && (
+                                  <span className="text-[9px] text-blue-700">
+                                    (continúa)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
             </tbody>
           </table>
         </div>
