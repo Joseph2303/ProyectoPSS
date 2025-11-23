@@ -5,21 +5,23 @@ import EmployeesPage from './pages/EmployeesPage'
 import TurnsPage from './pages/TurnsPage'
 import SchedulesPage from './pages/SchedulesPage'
 import KeysPage from './pages/KeysPage'
+import ReportsPage from './pages/ReportsPage'
+import { Toaster, toast } from 'react-hot-toast'
 
 export default function App() {
-  const [status, setStatus] = React.useState('')
+  // ya no usamos status local, todo será con toast
+  // const [status, setStatus] = React.useState('')
 
   function doSeed() {
     api.seedSampleData()
-    setStatus('Datos de ejemplo cargados.')
-    setTimeout(() => setStatus(''), 3000)
-    window.location.reload()
+    toast.success('Datos de ejemplo cargados.')
+    setTimeout(() => window.location.reload(), 400)
   }
 
   function doReset() {
     if (!confirm('¿Restablecer almacenamiento local y recargar?')) return
     api.resetStore()
-    setStatus('Almacenamiento eliminado. Recargando...')
+    toast('Almacenamiento eliminado. Recargando...', { icon: '🧹' })
     setTimeout(() => window.location.reload(), 600)
   }
 
@@ -34,8 +36,7 @@ export default function App() {
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
-    setStatus('Exportado ci_export.json')
-    setTimeout(() => setStatus(''), 2000)
+    toast.success('Exportado ci_export.json')
   }
 
   const navLinkClass = ({ isActive }) =>
@@ -51,13 +52,16 @@ export default function App() {
       {/* Top bar */}
       <header className="border-b border-slate-200 bg-white/70 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
-              Control Interno
-            </h1>
-            <p className="text-xs md:text-sm text-slate-500">
-              Gestión de empleados, turnos, horarios y registro de claves.
-            </p>
+          <div className="flex items-center gap-3">
+            <img src="/favicon.png" alt="CI" className="h-10 w-10 md:h-20 md:w-20" />
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
+                Control Interno
+              </h1>
+              <p className="text-xs md:text-sm text-slate-500">
+                Gestión de empleados, turnos, horarios y registro de claves.
+              </p>
+            </div>
           </div>
 
           {/* Acciones rápidas */}
@@ -69,24 +73,6 @@ export default function App() {
             >
               <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
               Datos ejemplo
-            </button>
-
-            <button
-              type="button"
-              onClick={doExport}
-              className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">download</span>
-              Exportar
-            </button>
-
-            <button
-              type="button"
-              onClick={doReset}
-              className="inline-flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">restart_alt</span>
-              Reset
             </button>
           </div>
         </div>
@@ -106,31 +92,28 @@ export default function App() {
             <NavLink to="/claves" className={navLinkClass}>
               Registro de Claves
             </NavLink>
+            <NavLink to="/reportes" className={navLinkClass}>
+              Reportes
+            </NavLink>
           </nav>
         </div>
       </header>
 
       {/* Contenido */}
       <main className="max-w-6xl mx-auto px-4 py-6">
-        {/* Barra de estado */}
-        {status && (
-          <div className="mb-4">
-            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs md:text-sm text-slate-600 shadow-sm">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{status}</span>
-            </div>
-          </div>
-        )}
-
         <section className="bg-white/90 rounded-2xl shadow-md shadow-slate-200/50 border border-slate-100 p-4 md:p-6">
           <Routes>
             <Route path="/" element={<EmployeesPage />} />
             <Route path="/turnos" element={<TurnsPage />} />
             <Route path="/horarios" element={<SchedulesPage />} />
             <Route path="/claves" element={<KeysPage />} />
+            <Route path="/reportes" element={<ReportsPage />} />
           </Routes>
         </section>
       </main>
+
+      {/* Toaster global para TODA la app */}
+      <Toaster position="top-right" />
     </div>
   )
 }

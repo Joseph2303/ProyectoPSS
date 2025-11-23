@@ -16,9 +16,8 @@ const SAMPLE = {
     { id: 's2', employeeId: 'e1', turnId: 't2', days: ['Sáb','Dom'], freeDay: 'Mié', startDate: '2025-12-01', endDate: '2025-12-31' },
     { id: 's3', employeeId: 'e2', turnId: 't2', days: ['Lun','Mar','Mié','Jue','Vie'], freeDay: 'Sáb', startDate: '2025-11-01', endDate: '2025-11-30' }
   ],
-  keys: [
-    { id: 'k1', clave: 'A123', employeeId: 'e1', turnId: 't1', createdAt: new Date().toISOString(), closedAt: null }
-  ]
+  keys: [],
+  reports: []
 }
 
 function load(){
@@ -28,7 +27,10 @@ function load(){
     localStorage.setItem(LOCAL_KEY, JSON.stringify(SAMPLE))
     return JSON.parse(JSON.stringify(SAMPLE))
   }
-  return JSON.parse(raw)
+  const s = JSON.parse(raw)
+  // garantizar campo reports
+  if (!s.reports) s.reports = []
+  return s
 }
 
 function save(state){
@@ -65,7 +67,114 @@ export const api = {
 
   // Keys (claves)
   getKeys(){ return load().keys },
-  addKey(k){ const s=load(); k.id=uid(); k.createdAt = new Date().toISOString(); s.keys.push(k); save(s); return k },
-  closeKey(id){ const s=load(); const i=s.keys.findIndex(k=>k.id===id); if(i===-1) return null; s.keys[i].closedAt = new Date().toISOString(); save(s); return s.keys[i] },
-  updateKey(id, patch){ const s=load(); const i=s.keys.findIndex(k=>k.id===id); if(i===-1) return null; s.keys[i] = {...s.keys[i], ...patch}; save(s); return s.keys[i] }
+  addKey(k){ const s=load(); k.id=uid(); k.createdAt = new Date().toISOString(); s.keys.push(k);
+    // Nota: no crear un reporte por cada clave (evitar reportes por evento)
+    save(s); return k },
+  closeKey(id){ const s=load(); const i=s.keys.findIndex(k=>k.id===id); if(i===-1) return null; s.keys[i].closedAt = new Date().toISOString();
+    const k = s.keys[i]
+    // Generar snapshot/reporte según el tipo cerrado
+    if (k.type === 'shift_in') {
+      try { createShiftReport(s, k) } catch (e) {}
+      try { createRowSnapshot(s, k.employeeId) } catch(e) {}
+    } else if (k.type === 'absent' || k.type === 'late') {
+      // si se cierra una ausencia o una tardanza, generar snapshot para que aparezca en reportes
+      try { createRowSnapshot(s, k.employeeId) } catch(e) {}
+    }
+    save(s); return s.keys[i] },
+  updateKey(id, patch){ const s=load(); const i=s.keys.findIndex(k=>k.id===id); if(i===-1) return null; s.keys[i] = {...s.keys[i], ...patch};
+    const k = s.keys[i]
+    // Si la actualización contiene cierre, generar reportes/snapshots según el tipo
+    if (patch && patch.closedAt) {
+      if (s.keys[i].type === 'shift_in') {
+        try { createShiftReport(s, s.keys[i]) } catch(e) {}
+        try { createRowSnapshot(s, s.keys[i].employeeId) } catch(e) {}
+      } else if (s.keys[i].type === 'absent' || s.keys[i].type === 'late') {
+        try { createRowSnapshot(s, s.keys[i].employeeId) } catch(e) {}
+      }
+    }
+    save(s); return s.keys[i] },
+  // Reports
+  getReports(){ return load().reports },
+  updateReport(id, patch){ const s=load(); const i=s.reports.findIndex(r=>r.id===id); if(i===-1) return null; s.reports[i] = {...s.reports[i], ...patch}; save(s); return s.reports[i] },
+  clearReports(){ const s=load(); s.reports = []; save(s); return true }
+}
+
+// helper: create a detailed shift report when a shift_in is closed
+function createShiftReport(state, shiftKey) {
+  // state: already-loaded store object; shiftKey: the closed shift_in key object (with closedAt)
+  if (!shiftKey || !shiftKey.closedAt) return
+  const start = new Date(shiftKey.createdAt)
+  const end = new Date(shiftKey.closedAt)
+  const durationMin = Math.round((end - start) / 60000)
+
+  // collect all keys for this employee within the session interval (inclusive)
+  const items = state.keys
+    .filter(k => k.employeeId === shiftKey.employeeId)
+    .filter(k => {
+      const t = new Date(k.createdAt)
+      return t >= start && t <= end
+    })
+    .map(k => ({ id: k.id, clave: k.clave, type: k.type, createdAt: k.createdAt, closedAt: k.closedAt || null, meta: k.meta || null }))
+
+  // summarize breaks
+  const breaks = items
+    .filter(x => x.type === 'break_start')
+    .map(b => ({
+      id: b.id,
+      breakType: b.meta?.breakType || null,
+      start: b.createdAt,
+      end: b.closedAt || null,
+      durationMin: b.closedAt ? Math.round((new Date(b.closedAt) - new Date(b.createdAt)) / 60000) : null
+    }))
+
+  const emp = state.employees.find(e => e.id === shiftKey.employeeId) || null
+  const turn = state.turns.find(t => t.id === shiftKey.turnId) || null
+
+  const report = {
+    id: uid(),
+    type: 'shift_report',
+    keyId: shiftKey.id,
+    employeeId: shiftKey.employeeId,
+    employee: emp ? { id: emp.id, name: emp.name, position: emp.position, code: emp.code } : null,
+    turnId: shiftKey.turnId || null,
+    turn: turn ? { id: turn.id, name: turn.name, startTime: turn.startTime, endTime: turn.endTime } : null,
+    start: shiftKey.createdAt,
+    end: shiftKey.closedAt,
+    durationMin,
+    items,
+    breaks,
+    timestamp: new Date().toISOString()
+  }
+
+  // Mantener solo un reporte por empleado: eliminar previos y añadir el nuevo
+  state.reports = state.reports.filter(r => r.employeeId !== shiftKey.employeeId)
+  state.reports.push(report)
+}
+
+// helper: create a snapshot of the KeysPage row for an employee
+function createRowSnapshot(state, employeeId) {
+  const emp = state.employees.find(e => e.id === employeeId) || null
+  // determine a turnId: prefer last key's turnId, fallback null
+  const lastKey = state.keys.slice().reverse().find(k => k.employeeId === employeeId && k.turnId)
+  const turn = lastKey ? state.turns.find(t => t.id === lastKey.turnId) : null
+
+  const keysForEmp = state.keys
+    .filter(k => k.employeeId === employeeId)
+    .sort((a,b)=> new Date(a.createdAt) - new Date(b.createdAt))
+    .map(k => ({ id: k.id, clave: k.clave, type: k.type, createdAt: k.createdAt, closedAt: k.closedAt || null, meta: k.meta || null }))
+
+  const snapshot = {
+    id: uid(),
+    type: 'row_snapshot',
+    employeeId: employeeId,
+    employee: emp ? { id: emp.id, name: emp.name, position: emp.position, code: emp.code } : null,
+    turnId: lastKey ? lastKey.turnId : null,
+    turn: turn ? { id: turn.id, name: turn.name, startTime: turn.startTime, endTime: turn.endTime } : null,
+    keys: keysForEmp,
+    timestamp: new Date().toISOString()
+  }
+
+  // Mantener solo un reporte por empleado: eliminar previos y añadir el nuevo
+  state.reports = state.reports.filter(r => r.employeeId !== employeeId)
+  state.reports.push(snapshot)
 }

@@ -1,23 +1,32 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../api/mockApi'
+import { toast } from 'react-hot-toast'
+import Pagination from '../components/Pagination'
 
 /* FORMULARIO DE EMPLEADO */
-function EmployeeForm({ onSave, initial }) {
-  const [form, setForm] = useState(
-    initial || { name: '', position: '', code: '' }
-  )
+function EmployeeForm({ onSave, initial, onCancelEdit }) {
+  const empty = { name: '', position: '', code: '' }
+
+  const [form, setForm] = useState(initial || empty)
 
   useEffect(() => {
-    setForm(initial || { name: '', position: '', code: '' })
+    setForm(initial || empty)
   }, [initial])
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    onSave(form, () => setForm(empty))
+  }
+
+  function handleReset() {
+    setForm(empty)
+    onCancelEdit && onCancelEdit()
+  }
 
   return (
     <form
-      onSubmit={e => {
-        e.preventDefault()
-        onSave(form)
-        setForm({ name: '', position: '', code: '' })
-      }}
+      onSubmit={handleSubmit}
       className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200"
     >
       <input
@@ -41,11 +50,24 @@ function EmployeeForm({ onSave, initial }) {
         className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
       />
 
-      <button
-        className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
-      >
-        Guardar
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          className="flex-1 rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
+        >
+          {initial ? 'Actualizar' : 'Guardar'}
+        </button>
+
+        {initial && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        )}
+      </div>
     </form>
   )
 }
@@ -55,23 +77,89 @@ export default function EmployeesPage() {
   const [items, setItems] = useState([])
   const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
+  // estado para modal de confirmación
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [employeeToDelete, setEmployeeToDelete] = useState(null)
 
   useEffect(() => {
-    setItems(api.getEmployees())
+    try {
+      setItems(api.getEmployees())
+    } catch (err) {
+      console.error(err)
+      toast.error('Error cargando la lista de empleados')
+    }
   }, [])
 
+  // reset page when filters or items change
+  useEffect(() => {
+    setPage(1)
+  }, [search, items])
+
   function refresh() {
-    setItems(api.getEmployees())
+    try {
+      setItems(api.getEmployees())
+    } catch (err) {
+      console.error(err)
+      toast.error('No se pudieron refrescar los empleados')
+    }
   }
 
-  function handleSave(emp) {
-    if (editing) {
-      api.updateEmployee(editing.id, emp)
-      setEditing(null)
-    } else {
-      api.addEmployee(emp)
+  function handleSave(emp, resetCb) {
+    const name = (emp.name || '').trim()
+    const code = (emp.code || '').trim()
+
+    if (!name) {
+      toast.error('El empleado debe tener un nombre')
+      return
     }
-    refresh()
+    if (!code) {
+      toast.error('El empleado debe tener un código')
+      return
+    }
+
+    try {
+      if (editing) {
+        api.updateEmployee(editing.id, { ...emp, name, code })
+        toast.success('Empleado actualizado correctamente')
+        setEditing(null)
+      } else {
+        api.addEmployee({ ...emp, name, code })
+        toast.success('Empleado registrado correctamente')
+      }
+      refresh()
+      resetCb && resetCb()
+    } catch (err) {
+      console.error(err)
+      toast.error('Ocurrió un error al guardar el empleado')
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditing(null)
+    toast('Edición cancelada', { icon: '↩️' })
+  }
+
+  function askDelete(emp) {
+    setEmployeeToDelete(emp)
+    setConfirmOpen(true)
+  }
+
+  function handleConfirmDelete() {
+    if (!employeeToDelete) return
+    try {
+      api.deleteEmployee(employeeToDelete.id)
+      toast.success('Empleado eliminado correctamente')
+      refresh()
+    } catch (err) {
+      console.error(err)
+      toast.error('No se pudo eliminar el empleado')
+    } finally {
+      setConfirmOpen(false)
+      setEmployeeToDelete(null)
+    }
   }
 
   // --- BUSCADOR POTENTE ---
@@ -81,15 +169,17 @@ export default function EmployeesPage() {
   const filteredItems = items.filter(emp => {
     if (tokens.length === 0) return true
 
-    const haystack =
-      `${emp.name || ''} ${emp.position || ''} ${emp.code || ''}`.toLowerCase()
+    const haystack = `${emp.name || ''} ${emp.position || ''} ${
+      emp.code || ''
+    }`.toLowerCase()
 
-    // Cada palabra escrita debe aparecer en algún lugar de los datos
     return tokens.every(token => haystack.includes(token))
   })
 
   const total = items.length
   const visible = filteredItems.length
+
+  const paginatedItems = filteredItems.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <div className="space-y-6">
@@ -135,13 +225,18 @@ export default function EmployeesPage() {
             />
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
-            Puedes escribir varias palabras: ej. <span className="italic">juan bodega</span>.
+            Puedes escribir varias palabras: ej.{' '}
+            <span className="italic">juan bodega</span>.
           </p>
         </div>
       </div>
 
       {/* FORMULARIO */}
-      <EmployeeForm onSave={handleSave} initial={editing} />
+      <EmployeeForm
+        onSave={handleSave}
+        initial={editing}
+        onCancelEdit={handleCancelEdit}
+      />
 
       {/* TABLA */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -158,16 +253,13 @@ export default function EmployeesPage() {
           <tbody>
             {filteredItems.length === 0 && (
               <tr>
-                <td
-                  colSpan={4}
-                  className="text-center text-slate-400 py-6"
-                >
+                <td colSpan={4} className="text-center text-slate-400 py-6">
                   No se encontraron empleados con ese criterio de búsqueda.
                 </td>
               </tr>
             )}
 
-            {filteredItems.map(it => (
+            {paginatedItems.map(it => (
               <tr
                 key={it.id}
                 className="border-b border-slate-100 hover:bg-slate-50 transition"
@@ -184,10 +276,7 @@ export default function EmployeesPage() {
                   </button>
 
                   <button
-                    onClick={() => {
-                      api.deleteEmployee(it.id)
-                      refresh()
-                    }}
+                    onClick={() => askDelete(it)}
                     className="px-3 py-1 rounded-md bg-red-100 text-red-700 text-xs font-semibold hover:bg-red-200 transition"
                   >
                     Eliminar
@@ -198,6 +287,85 @@ export default function EmployeesPage() {
           </tbody>
         </table>
       </div>
+      <Pagination
+        total={filteredItems.length}
+        page={page}
+        setPage={setPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
+
+      {/* MODAL DE CONFIRMACIÓN */}
+      <ConfirmModal
+        open={confirmOpen}
+        title="Eliminar empleado"
+        message={
+          employeeToDelete
+            ? `¿Seguro que deseas eliminar a "${employeeToDelete.name}" (código ${employeeToDelete.code})? Esta acción no se puede deshacer.`
+            : '¿Seguro que deseas eliminar este empleado?'
+        }
+        confirmLabel="Sí, eliminar"
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          setConfirmOpen(false)
+          setEmployeeToDelete(null)
+        }}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
+  )
+}
+
+/* MODAL REUTILIZABLE */
+function ConfirmModal({
+  open,
+  title,
+  message,
+  confirmLabel = 'Sí, continuar',
+  cancelLabel = 'Cancelar',
+  onCancel,
+  onConfirm,
+}) {
+  if (!open) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center">
+      {/* Fondo oscuro full-screen */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+
+      {/* Tarjeta del modal */}
+      <div className="relative z-10 w-[min(420px,90%)] rounded-2xl bg-white shadow-2xl p-6">
+        <h3 className="text-base font-semibold text-slate-900">
+          {title || 'Confirmar acción'}
+        </h3>
+
+        {message && (
+          <p className="mt-2 text-sm text-slate-600">
+            {message}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-full bg-red-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

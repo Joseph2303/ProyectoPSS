@@ -1,23 +1,32 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../api/mockApi'
+import { toast } from 'react-hot-toast'
+import Pagination from '../components/Pagination'
 
 /* FORMULARIO DE TURNOS */
-function TurnForm({ onSave, initial }) {
-  const [form, setForm] = useState(
-    initial || { name: '', startTime: '', endTime: '' }
-  )
+function TurnForm({ onSave, initial, onCancelEdit }) {
+  const empty = { name: '', startTime: '', endTime: '' }
+
+  const [form, setForm] = useState(initial || empty)
 
   useEffect(() => {
-    setForm(initial || { name: '', startTime: '', endTime: '' })
+    setForm(initial || empty)
   }, [initial])
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    onSave(form, () => setForm(empty))
+  }
+
+  function handleReset() {
+    setForm(empty)
+    onCancelEdit && onCancelEdit()
+  }
 
   return (
     <form
-      onSubmit={e => {
-        e.preventDefault()
-        onSave(form)
-        setForm({ name: '', startTime: '', endTime: '' })
-      }}
+      onSubmit={handleSubmit}
       className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200"
     >
       <input
@@ -41,9 +50,23 @@ function TurnForm({ onSave, initial }) {
         className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
-      <button className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm">
-        Guardar
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          className="flex-1 rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
+        >
+          {initial ? 'Actualizar' : 'Guardar'}
+        </button>
+        {initial && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        )}
+      </div>
     </form>
   )
 }
@@ -54,22 +77,91 @@ export default function TurnsPage() {
   const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
 
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
+  // estado para el modal de confirmación
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [turnToDelete, setTurnToDelete] = useState(null)
+
   useEffect(() => {
-    setItems(api.getTurns())
+    try {
+      setItems(api.getTurns())
+    } catch (err) {
+      console.error(err)
+      toast.error('Error cargando los turnos')
+    }
   }, [])
 
+  useEffect(() => {
+    setPage(1)
+  }, [search, items])
+
   function refresh() {
-    setItems(api.getTurns())
+    try {
+      setItems(api.getTurns())
+    } catch (err) {
+      console.error(err)
+      toast.error('No se pudieron refrescar los turnos')
+    }
   }
 
-  function handleSave(turn) {
-    if (editing) {
-      api.updateTurn(editing.id, turn)
-      setEditing(null)
-    } else {
-      api.addTurn(turn)
+  function handleSave(turn, resetCb) {
+    const name = (turn.name || '').trim()
+
+    if (!name) {
+      toast.error('El turno debe tener un nombre')
+      return
     }
-    refresh()
+    if (!turn.startTime || !turn.endTime) {
+      toast.error('Debe indicar la hora de inicio y de fin')
+      return
+    }
+    if (turn.startTime === turn.endTime) {
+      toast.error('La hora de inicio y fin no pueden ser iguales')
+      return
+    }
+
+    try {
+      if (editing) {
+        api.updateTurn(editing.id, { ...turn, name })
+        toast.success('Turno actualizado correctamente')
+        setEditing(null)
+      } else {
+        api.addTurn({ ...turn, name })
+        toast.success('Turno creado correctamente')
+      }
+      refresh()
+      resetCb && resetCb()
+    } catch (err) {
+      console.error(err)
+      toast.error('Ocurrió un error al guardar el turno')
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditing(null)
+    toast('Edición cancelada', { icon: '↩️' })
+  }
+
+  function askDelete(turn) {
+    setTurnToDelete(turn)
+    setConfirmOpen(true)
+  }
+
+  function handleConfirmDelete() {
+    if (!turnToDelete) return
+    try {
+      api.deleteTurn(turnToDelete.id)
+      toast.success('Turno eliminado correctamente')
+      refresh()
+    } catch (err) {
+      console.error(err)
+      toast.error('No se pudo eliminar el turno')
+    } finally {
+      setConfirmOpen(false)
+      setTurnToDelete(null)
+    }
   }
 
   // Buscador potente
@@ -78,7 +170,6 @@ export default function TurnsPage() {
 
   const filteredItems = items.filter(t => {
     if (tokens.length === 0) return true
-
     const haystack = `${t.name} ${t.startTime} ${t.endTime}`.toLowerCase()
     return tokens.every(token => haystack.includes(token))
   })
@@ -86,13 +177,17 @@ export default function TurnsPage() {
   const total = items.length
   const visible = filteredItems.length
 
+  const paginatedItems = filteredItems.slice((page - 1) * pageSize, page * pageSize)
+
   return (
     <div className="space-y-6">
       {/* HEADER */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Gestión de turnos</h2>
-          <p className="text-sm text-slate-500">Administra los diferentes turnos de trabajo.</p>
+          <p className="text-sm text-slate-500">
+            Administra los diferentes turnos de trabajo.
+          </p>
           <p className="mt-1 text-xs text-slate-400">
             Mostrando <span className="font-semibold">{visible}</span> de{' '}
             <span className="font-semibold">{total}</span> turnos.
@@ -109,8 +204,12 @@ export default function TurnsPage() {
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z"
+                />
               </svg>
             </span>
 
@@ -130,7 +229,7 @@ export default function TurnsPage() {
       </div>
 
       {/* FORMULARIO */}
-      <TurnForm onSave={handleSave} initial={editing} />
+      <TurnForm onSave={handleSave} initial={editing} onCancelEdit={handleCancelEdit} />
 
       {/* TABLA */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -153,7 +252,7 @@ export default function TurnsPage() {
               </tr>
             )}
 
-            {filteredItems.map(t => (
+            {paginatedItems.map(t => (
               <tr
                 key={t.id}
                 className="border-b border-slate-100 hover:bg-slate-50 transition"
@@ -171,12 +270,7 @@ export default function TurnsPage() {
                   </button>
 
                   <button
-                    onClick={() => {
-                      if (confirm('¿Eliminar turno?')) {
-                        api.deleteTurn(t.id)
-                        refresh()
-                      }
-                    }}
+                    onClick={() => askDelete(t)}
                     className="px-3 py-1 rounded-md bg-red-100 text-red-700 text-xs font-semibold hover:bg-red-200 transition"
                   >
                     Eliminar
@@ -187,6 +281,85 @@ export default function TurnsPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        total={filteredItems.length}
+        page={page}
+        setPage={setPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
+
+      {/* Modal de confirmación */}
+      <ConfirmModal
+        open={confirmOpen}
+        title="Eliminar turno"
+        message={
+          turnToDelete
+            ? `¿Seguro que deseas eliminar el turno "${turnToDelete.name}"? Esta acción no se puede deshacer.`
+            : '¿Seguro que deseas eliminar este turno?'
+        }
+        confirmLabel="Sí, eliminar"
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          setConfirmOpen(false)
+          setTurnToDelete(null)
+        }}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
+  )
+}
+
+/* MODAL REUTILIZABLE */
+function ConfirmModal({
+  open,
+  title,
+  message,
+  confirmLabel = 'Sí, continuar',
+  cancelLabel = 'Cancelar',
+  onCancel,
+  onConfirm,
+}) {
+  if (!open) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center">
+      {/* Fondo oscuro full-screen */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+
+      {/* Tarjeta del modal */}
+      <div className="relative z-10 w-[min(420px,90%)] rounded-2xl bg-white shadow-2xl p-6">
+        <h3 className="text-base font-semibold text-slate-900">
+          {title || 'Confirmar acción'}
+        </h3>
+        {message && (
+          <p className="mt-2 text-sm text-slate-600">
+            {message}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-full bg-red-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }
