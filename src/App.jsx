@@ -6,6 +6,7 @@ import TurnsPage from './pages/TurnsPage'
 import SchedulesPage from './pages/SchedulesPage'
 import KeysPage from './pages/KeysPage'
 import ReportsPage from './pages/ReportsPage'
+import WelcomePage from './pages/WelcomePage'
 import { Toaster, toast } from 'react-hot-toast'
 
 export default function App() {
@@ -59,7 +60,7 @@ export default function App() {
                 Control Interno
               </h1>
               <p className="text-xs md:text-sm text-slate-500">
-                Gestión de empleados, turnos, horarios y registro de claves.
+                P.S.S, Profesional Security Services S.A.
               </p>
             </div>
           </div>
@@ -81,6 +82,9 @@ export default function App() {
         <div className="border-t border-slate-200 bg-white/60">
           <nav className="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2">
             <NavLink to="/" className={navLinkClass} end>
+              Inicio
+            </NavLink>
+            <NavLink to="/empleados" className={navLinkClass}>
               Empleados
             </NavLink>
             <NavLink to="/turnos" className={navLinkClass}>
@@ -103,7 +107,9 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         <section className="bg-white/90 rounded-2xl shadow-md shadow-slate-200/50 border border-slate-100 p-4 md:p-6">
           <Routes>
-            <Route path="/" element={<EmployeesPage />} />
+            <Route path="/welcome" element={<WelcomePage />} />
+            <Route path="/" element={<WelcomePage />} />
+            <Route path="/empleados" element={<EmployeesPage />} />
             <Route path="/turnos" element={<TurnsPage />} />
             <Route path="/horarios" element={<SchedulesPage />} />
             <Route path="/claves" element={<KeysPage />} />

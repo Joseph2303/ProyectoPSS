@@ -54,7 +54,7 @@ function isScheduleActive(sch, turns, nowStr, today) {
   return true
 }
 
-function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, nowTick, breakDefaults, requestConfirm }) {
+function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, nowTick, breakDefaults, requestConfirm, markedRows, setMarkedRows }) {
   const [input, setInput] = useState('')
 
   // helper to compute open break of a type
@@ -106,7 +106,8 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
   const closedEarlier = lastShiftToday && lastShiftToday.closedAt && new Date(lastShiftToday.closedAt) <= new Date(nowTick)
 
   const disableAll = disableMarkForAbsent || closedEarlier
-
+  const isMarked = Array.isArray(markedRows) && markedRows.includes(emp.id)
+  const enabled = !disableAll && (openIn || isMarked)
   // build sessions (shift_in with items) and loose items
   const empKeys = keys
     .filter(k => k.employeeId === emp.id)
@@ -145,7 +146,7 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
       {/* Acción */}
       <td className="px-3 py-3 align-top">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
             {disableMarkForAbsent ? (
               <div className="rounded-full px-3 py-1 text-xs font-semibold text-slate-500 bg-slate-100">Ausente</div>
             ) : (
@@ -159,6 +160,8 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
                   if (openIn) {
                     requestConfirm(`Confirmar cierre de turno de ${emp.name}? Se registrará la hora de salida.`, () => onAddKey(emp.id, 'SALIDA', 'shift_out'))
                   } else {
+                    // mark row and create shift_in
+                    setMarkedRows(prev => Array.from(new Set([...(prev || []), emp.id])))
                     onAddKey(emp.id, 'ENTRADA', 'shift_in')
                   }
                 }}
@@ -192,12 +195,12 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
             <div className="flex items-center justify-center py-6">
               <button
                 onClick={() => {
-                  if (disableAll) return
+                  if (!enabled) return
                   if (openBreakAlm) onCloseKey(openBreakAlm.id)
                   else onAddKey(emp.id, 'Almuerzo/Cena', 'break_start', { breakType: 'almuerzo_cena', duration: breakDefaults.almuerzo })
                 }}
-                disabled={disableAll}
-                className={`rounded-full ${disableAll ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-cyan-900 hover:bg-cyan-800'} px-4 py-2 text-xs font-semibold text-white shadow-sm transition`}
+                disabled={!enabled}
+                className={`rounded-full ${!enabled ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-cyan-900 hover:bg-cyan-800'} px-4 py-2 text-xs font-semibold text-white shadow-sm transition`}
               >
                 {openBreakAlm ? 'Terminar' : 'Comienza tiempo'}
               </button>
@@ -209,12 +212,12 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
             <div className="flex items-center justify-center py-6">
               <button
                 onClick={() => {
-                  if (disableAll) return
+                  if (!enabled) return
                   if (openBreakDes) onCloseKey(openBreakDes.id)
                   else onAddKey(emp.id, 'Desayuno/Café', 'break_start', { breakType: 'desayuno_cafe', duration: breakDefaults.desayuno })
                 }}
-                disabled={disableAll}
-                className={`rounded-full ${disableAll ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-cyan-900 hover:bg-cyan-800'} px-4 py-2 text-xs font-semibold text-white shadow-sm transition`}
+                disabled={!enabled}
+                className={`rounded-full ${!enabled ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-cyan-900 hover:bg-cyan-800'} px-4 py-2 text-xs font-semibold text-white shadow-sm transition`}
               >
                 {openBreakDes ? 'Terminar' : 'Comienza tiempo'}
               </button>
@@ -227,13 +230,13 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
       <td className="px-3 py-3 align-top">
         <div className="flex items-center gap-2">
           <input
-            className={`emp-input w-28 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 ${disableAll ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+            className={`emp-input w-28 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 ${!enabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
             placeholder="Clave"
             value={input}
-            disabled={disableAll}
+            disabled={!enabled}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
-              if (disableAll) return
+              if (!enabled) return
               if (e.key === 'Enter' && !e.ctrlKey) {
                 e.preventDefault()
                 if (input) {
@@ -249,13 +252,13 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
           />
           <button
             onClick={() => {
-              if (disableAll) return
+              if (!enabled) return
               if (!input) return
               onAddKey(emp.id, input)
               setInput('')
             }}
-            disabled={disableAll}
-            className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold text-white ${disableAll ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-blue-600'}`}
+            disabled={!enabled}
+            className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold text-white ${!enabled ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-blue-600'}`}
           >
             OK
           </button>
@@ -282,7 +285,7 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
                   {k.type === 'break_start' && (
                     <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-100">{Math.floor((nowTick - new Date(k.createdAt)) / 1000)}s</span>
                   )}
-                  {disableAll ? (
+                  {(!enabled) ? (
                     <button disabled className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] opacity-50 cursor-not-allowed">Cerrar</button>
                   ) : (
                     <button onClick={() => {
@@ -336,6 +339,7 @@ export default function KeysPage() {
   const [turns, setTurns] = useState([])
   const [schedules, setSchedules] = useState([])
   const [activeEmployees, setActiveEmployees] = useState([])
+  const [markedRows, setMarkedRows] = useState([])
   const [nowTick, setNowTick] = useState(Date.now())
   const [breakDefaults] = useState({ desayuno: 15, cafe: 10, almuerzo: 60, cena: 45 })
 
@@ -490,20 +494,27 @@ export default function KeysPage() {
       if (lastIn) {
         api.updateKey(lastIn.id, { closedAt: new Date().toISOString() })
         refreshAll()
+        // remove any UI mark for this employee when closing shift
+        setMarkedRows(prev => prev.filter(x => x !== employeeId))
         return
       }
       api.addKey({ employeeId, turnId: defaultTurn, clave, type, meta })
       refreshAll()
+      setMarkedRows(prev => prev.filter(x => x !== employeeId))
       return
     }
 
-    api.addKey({ employeeId, turnId: defaultTurn, clave, type, meta })
+    const k = api.addKey({ employeeId, turnId: defaultTurn, clave, type, meta })
     refreshAll()
+    // if starting a shift, mark the row so other buttons/inputs are enabled
+    if (type === 'shift_in') setMarkedRows(prev => Array.from(new Set([...prev, employeeId])))
   }
 
   function closeKey(id) {
+    const k = keys.find(x => x.id === id)
     api.closeKey(id)
     refreshAll()
+    if (k && k.employeeId) setMarkedRows(prev => prev.filter(x => x !== k.employeeId))
   }
 
   const openKeysCount = keys.filter(k => !k.closedAt && activeEmployees.some(emp => emp.id === k.employeeId)).length
@@ -556,7 +567,20 @@ export default function KeysPage() {
             <tbody>
               {filteredEmployees.length === 0 && (<tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">No hay coincidencias con la búsqueda o no hay personas en servicio.</td></tr>)}
               {filteredEmployees.map(emp => (
-                <EmployeeRow key={emp.id} emp={emp} turns={turns} keys={keys} onAddKey={addKey} onCloseKey={closeKey} defaultTurnId={defaultTurnForEmployee(emp)} nowTick={nowTick} breakDefaults={breakDefaults} requestConfirm={requestConfirm} />
+                <EmployeeRow
+                  key={emp.id}
+                  emp={emp}
+                  turns={turns}
+                  keys={keys}
+                  onAddKey={addKey}
+                  onCloseKey={closeKey}
+                  defaultTurnId={defaultTurnForEmployee(emp)}
+                  nowTick={nowTick}
+                  breakDefaults={breakDefaults}
+                  requestConfirm={requestConfirm}
+                  markedRows={markedRows}
+                  setMarkedRows={setMarkedRows}
+                />
               ))}
             </tbody>
           </table>
