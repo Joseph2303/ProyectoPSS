@@ -350,7 +350,7 @@ export default function ReportsPage(){
                 <th className="px-3 py-2 text-left font-semibold">Entrada</th>
                 <th className="px-3 py-2 text-left font-semibold">Salida</th>
                 <th className="px-3 py-2 text-left font-semibold">Duración</th>
-                <th className="px-3 py-2 text-left font-semibold">Claves</th>
+                <th className="px-3 py-2 text-left font-semibold">Historial de Marcas</th>
                 <th className="px-3 py-2 text-left font-semibold">Notas</th>
               </tr>
             </thead>

@@ -2,9 +2,9 @@ const LOCAL_KEY = 'ci_frontend_store_v1'
 
 const SAMPLE = {
   employees: [
-    { id: 'e1', name: 'Juan Pérez', position: 'Operativo', code: 'OP-001' },
-    { id: 'e2', name: 'María García', position: 'Operativo', code: 'OP-002' },
-    { id: 'e3', name: 'Luis Torres', position: 'Supervisor', code: 'SP-001' }
+    { id: 'e1', name: 'Juan Pérez' },
+    { id: 'e2', name: 'María García' },
+    { id: 'e3', name: 'Luis Torres' }
   ],
   turns: [
     { id: 't1', name: 'Matutino', startTime: '06:00', endTime: '14:00' },
@@ -16,8 +16,24 @@ const SAMPLE = {
     { id: 's2', employeeId: 'e1', turnId: 't2', days: ['Sáb','Dom'], freeDay: 'Mié', startDate: '2025-12-01', endDate: '2025-12-31' },
     { id: 's3', employeeId: 'e2', turnId: 't2', days: ['Lun','Mar','Mié','Jue','Vie'], freeDay: 'Sáb', startDate: '2025-11-01', endDate: '2025-11-30' }
   ],
+  // quick turn assignments (employee <-> turn) separate from schedules
+  turnAssignments: [
+    { id: 'ta1', employeeId: 'e1', turnId: 't1' },
+    { id: 'ta2', employeeId: 'e2', turnId: 't2' }
+  ],
   keys: [],
-  reports: []
+  reports: [],
+  // positions and assignments separate from employee records
+  positions: [
+    { id: 'p1', name: 'Operativo' },
+    { id: 'p2', name: 'Supervisor' }
+  ],
+  // assignments: each entry ties an employee to a position and a code
+  assignments: [
+    { employeeId: 'e1', positionId: 'p1', code: 'OP-001' },
+    { employeeId: 'e2', positionId: 'p1', code: 'OP-002' },
+    { employeeId: 'e3', positionId: 'p2', code: 'SP-001' }
+  ]
 }
 
 function load(){
@@ -30,6 +46,8 @@ function load(){
   const s = JSON.parse(raw)
   // garantizar campo reports
   if (!s.reports) s.reports = []
+  if (!s.positions) s.positions = []
+  if (!s.assignments) s.assignments = []
   return s
 }
 
@@ -52,6 +70,24 @@ export const api = {
   addEmployee(emp){ const s=load(); emp.id = uid(); s.employees.push(emp); save(s); return emp },
   updateEmployee(id, patch){ const s=load(); const i=s.employees.findIndex(e=>e.id===id); if(i===-1) return null; s.employees[i]={...s.employees[i],...patch}; save(s); return s.employees[i] },
   deleteEmployee(id){ const s=load(); s.employees = s.employees.filter(e=>e.id!==id); save(s); return true },
+
+  // Positions + Assignments
+  getPositions(){ return load().positions },
+  addPosition(p){ const s=load(); p.id=uid(); s.positions.push(p); save(s); return p },
+  updatePosition(id, patch){ const s=load(); const i=s.positions.findIndex(x=>x.id===id); if(i===-1) return null; s.positions[i]={...s.positions[i],...patch}; save(s); return s.positions[i] },
+  deletePosition(id){ const s=load(); s.positions = s.positions.filter(x=>x.id!==id); // also remove assignments to this position
+    s.assignments = s.assignments.filter(a=>a.positionId!==id); save(s); return true },
+
+  getAssignments(){ return load().assignments },
+  assignEmployee(employeeId, positionId, code){ const s=load(); const existing = s.assignments.find(a=>a.employeeId===employeeId); if(existing){ existing.positionId=positionId; existing.code=code; } else { s.assignments.push({ employeeId, positionId, code }) } save(s); return s.assignments.find(a=>a.employeeId===employeeId) },
+  unassignEmployee(employeeId){ const s=load(); s.assignments = s.assignments.filter(a=>a.employeeId!==employeeId); save(s); return true },
+  updateAssignment(employeeId, patch){ const s=load(); const i=s.assignments.findIndex(a=>a.employeeId===employeeId); if(i===-1) return null; s.assignments[i] = {...s.assignments[i], ...patch}; save(s); return s.assignments[i] },
+
+  // Turn assignments (simple mapping employee -> turn)
+  getTurnAssignments(){ return load().turnAssignments || [] },
+  assignTurn(employeeId, turnId){ const s=load(); if(!s.turnAssignments) s.turnAssignments=[]; const existing = s.turnAssignments.find(a=>a.employeeId===employeeId); if(existing){ existing.turnId = turnId; } else { s.turnAssignments.push({ id: uid(), employeeId, turnId }) } save(s); try { localStorage.setItem('ci:turnAssignments:changed', Date.now().toString()); try { window.dispatchEvent(new Event('ci:turnAssignments:changed')) } catch(e){} } catch(e){}; return s.turnAssignments.find(a=>a.employeeId===employeeId) },
+  unassignTurn(id){ const s=load(); s.turnAssignments = (s.turnAssignments||[]).filter(a=>a.id!==id); save(s); try { localStorage.setItem('ci:turnAssignments:changed', Date.now().toString()); try { window.dispatchEvent(new Event('ci:turnAssignments:changed')) } catch(e){} } catch(e){}; return true },
+  updateTurnAssignment(id, patch){ const s=load(); const i=(s.turnAssignments||[]).findIndex(a=>a.id===id); if(i===-1) return null; s.turnAssignments[i] = {...s.turnAssignments[i], ...patch}; save(s); try { localStorage.setItem('ci:turnAssignments:changed', Date.now().toString()); try { window.dispatchEvent(new Event('ci:turnAssignments:changed')) } catch(e){} } catch(e){}; return s.turnAssignments[i] },
 
   // Turns
   getTurns(){ return load().turns },
@@ -135,7 +171,13 @@ function createShiftReport(state, shiftKey) {
     type: 'shift_report',
     keyId: shiftKey.id,
     employeeId: shiftKey.employeeId,
-    employee: emp ? { id: emp.id, name: emp.name, position: emp.position, code: emp.code } : null,
+    // resolve position/code from assignments
+    employee: (function(){
+      if(!emp) return null
+      const assign = state.assignments ? state.assignments.find(a=>a.employeeId===emp.id) : null
+      const pos = assign && state.positions ? state.positions.find(p=>p.id===assign.positionId) : null
+      return { id: emp.id, name: emp.name, position: pos ? pos.name : null, code: assign ? assign.code : null }
+    })(),
     turnId: shiftKey.turnId || null,
     turn: turn ? { id: turn.id, name: turn.name, startTime: turn.startTime, endTime: turn.endTime } : null,
     start: shiftKey.createdAt,
@@ -167,7 +209,12 @@ function createRowSnapshot(state, employeeId) {
     id: uid(),
     type: 'row_snapshot',
     employeeId: employeeId,
-    employee: emp ? { id: emp.id, name: emp.name, position: emp.position, code: emp.code } : null,
+    employee: (function(){
+      if(!emp) return null
+      const assign = state.assignments ? state.assignments.find(a=>a.employeeId===emp.id) : null
+      const pos = assign && state.positions ? state.positions.find(p=>p.id===assign.positionId) : null
+      return { id: emp.id, name: emp.name, position: pos ? pos.name : null, code: assign ? assign.code : null }
+    })(),
     turnId: lastKey ? lastKey.turnId : null,
     turn: turn ? { id: turn.id, name: turn.name, startTime: turn.startTime, endTime: turn.endTime } : null,
     keys: keysForEmp,

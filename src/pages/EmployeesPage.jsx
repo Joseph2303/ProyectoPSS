@@ -6,12 +6,21 @@ import Pagination from '../components/Pagination'
 
 /* FORMULARIO DE EMPLEADO */
 function EmployeeForm({ onSave, initial, onCancelEdit }) {
-  const empty = { name: '', position: '', code: '' }
+  const empty = { firstName: '', lastName: '' }
 
   const [form, setForm] = useState(initial || empty)
 
+  // Cuando recibimos `initial` debemos soportar objetos antiguos con `name`
   useEffect(() => {
-    setForm(initial || empty)
+    if (!initial) {
+      setForm(empty)
+      return
+    }
+
+    const first = initial.firstName ?? (initial.name ? initial.name.split(' ')[0] : '')
+    const last = initial.lastName ?? (initial.name ? initial.name.split(' ').slice(1).join(' ') : '')
+
+    setForm({ ...initial, firstName: first, lastName: last })
   }, [initial])
 
   function handleSubmit(e) {
@@ -30,27 +39,21 @@ function EmployeeForm({ onSave, initial, onCancelEdit }) {
       className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200"
     >
       <input
-        placeholder="Nombre completo"
-        value={form.name}
-        onChange={e => setForm({ ...form, name: e.target.value })}
+        placeholder="Nombre"
+        value={form.firstName}
+        onChange={e => setForm({ ...form, firstName: e.target.value })}
         className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
       />
 
       <input
-        placeholder="Puesto"
-        value={form.position}
-        onChange={e => setForm({ ...form, position: e.target.value })}
+        placeholder="Apellidos"
+        value={form.lastName}
+        onChange={e => setForm({ ...form, lastName: e.target.value })}
         className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
       />
 
-      <input
-        placeholder="Código"
-        value={form.code}
-        onChange={e => setForm({ ...form, code: e.target.value })}
-        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-      />
-
-      <div className="flex gap-2">
+      {/* Botones ocupan las dos columnas restantes en md */}
+      <div className="flex gap-2 md:col-span-2">
         <button
           type="submit"
           className="flex-1 rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
@@ -80,6 +83,13 @@ export default function EmployeesPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
+  function getFullName(emp) {
+    if (!emp) return ''
+    const first = emp.firstName ?? (emp.name ? emp.name.split(' ')[0] : '')
+    const last = emp.lastName ?? (emp.name ? emp.name.split(' ').slice(1).join(' ') : '')
+    return `${first} ${last}`.trim()
+  }
+
   // estado para modal de confirmación
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [employeeToDelete, setEmployeeToDelete] = useState(null)
@@ -108,25 +118,23 @@ export default function EmployeesPage() {
   }
 
   function handleSave(emp, resetCb) {
-    const name = (emp.name || '').trim()
-    const code = (emp.code || '').trim()
+    const firstName = (emp.firstName || '').trim()
+    const lastName = (emp.lastName || '').trim()
 
-    if (!name) {
-      toast.error('El empleado debe tener un nombre')
+    if (!firstName) {
+      toast.error('El empleado debe tener al menos un nombre')
       return
     }
-    if (!code) {
-      toast.error('El empleado debe tener un código')
-      return
-    }
+
+    const fullName = `${firstName}${lastName ? ' ' + lastName : ''}`
 
     try {
       if (editing) {
-        api.updateEmployee(editing.id, { ...emp, name, code })
+        api.updateEmployee(editing.id, { ...emp, firstName, lastName, name: fullName })
         toast.success('Empleado actualizado correctamente')
         setEditing(null)
       } else {
-        api.addEmployee({ ...emp, name, code })
+        api.addEmployee({ ...emp, firstName, lastName, name: fullName })
         toast.success('Empleado registrado correctamente')
       }
       refresh()
@@ -169,9 +177,9 @@ export default function EmployeesPage() {
   const filteredItems = items.filter(emp => {
     if (tokens.length === 0) return true
 
-    const haystack = `${emp.name || ''} ${emp.position || ''} ${
-      emp.code || ''
-    }`.toLowerCase()
+    const haystack = `${emp.firstName || (emp.name || '').split(' ')[0] || ''} ${
+      emp.lastName || (emp.name || '').split(' ').slice(1).join(' ') || ''
+    } ${emp.position || ''} ${emp.code || ''}`.toLowerCase()
 
     return tokens.every(token => haystack.includes(token))
   })
@@ -218,15 +226,14 @@ export default function EmployeesPage() {
             </span>
             <input
               type="text"
-              placeholder="Buscar por nombre, puesto o código..."
+              placeholder="Buscar por nombre o apellidos..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full rounded-full border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
-            Puedes escribir varias palabras: ej.{' '}
-            <span className="italic">juan bodega</span>.
+            Puedes escribir nombre y/o apellidos: ej. <span className="italic">juan pérez</span>.
           </p>
         </div>
       </div>
@@ -244,8 +251,7 @@ export default function EmployeesPage() {
           <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
             <tr className="text-slate-600 text-xs uppercase tracking-wide">
               <th className="px-4 py-2 text-left">Nombre</th>
-              <th className="px-4 py-2 text-left">Puesto</th>
-              <th className="px-4 py-2 text-left">Código</th>
+              <th className="px-4 py-2 text-left">Apellidos</th>
               <th className="px-4 py-2 text-left">Acciones</th>
             </tr>
           </thead>
@@ -253,7 +259,7 @@ export default function EmployeesPage() {
           <tbody>
             {filteredItems.length === 0 && (
               <tr>
-                <td colSpan={4} className="text-center text-slate-400 py-6">
+                <td colSpan={3} className="text-center text-slate-400 py-6">
                   No se encontraron empleados con ese criterio de búsqueda.
                 </td>
               </tr>
@@ -264,9 +270,16 @@ export default function EmployeesPage() {
                 key={it.id}
                 className="border-b border-slate-100 hover:bg-slate-50 transition"
               >
-                <td className="px-4 py-2">{it.name}</td>
-                <td className="px-4 py-2">{it.position}</td>
-                <td className="px-4 py-2">{it.code}</td>
+                {(() => {
+                  const first = it.firstName ?? (it.name ? it.name.split(' ')[0] : '')
+                  const last = it.lastName ?? (it.name ? it.name.split(' ').slice(1).join(' ') : '')
+                  return (
+                    <>
+                      <td className="px-4 py-2">{first}</td>
+                      <td className="px-4 py-2">{last}</td>
+                    </>
+                  )
+                })()}
                 <td className="px-4 py-2 flex gap-2">
                   <button
                     onClick={() => setEditing(it)}
@@ -301,7 +314,7 @@ export default function EmployeesPage() {
         title="Eliminar empleado"
         message={
           employeeToDelete
-            ? `¿Seguro que deseas eliminar a "${employeeToDelete.name}" (código ${employeeToDelete.code})? Esta acción no se puede deshacer.`
+            ? `¿Seguro que deseas eliminar a "${getFullName(employeeToDelete)}" (código ${employeeToDelete.code})? Esta acción no se puede deshacer.`
             : '¿Seguro que deseas eliminar este empleado?'
         }
         confirmLabel="Sí, eliminar"

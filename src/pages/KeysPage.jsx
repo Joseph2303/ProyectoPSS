@@ -226,45 +226,7 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
         </div>
       </td>
 
-      {/* INPUT CLAVE */}
-      <td className="px-3 py-3 align-top">
-        <div className="flex items-center gap-2">
-          <input
-            className={`emp-input w-28 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 ${!enabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-            placeholder="Clave"
-            value={input}
-            disabled={!enabled}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (!enabled) return
-              if (e.key === 'Enter' && !e.ctrlKey) {
-                e.preventDefault()
-                if (input) {
-                  onAddKey(emp.id, input)
-                  setInput('')
-                }
-              }
-              if (e.key === 'Enter' && e.ctrlKey) {
-                e.preventDefault()
-                requestConfirm(`Confirmar cierre de turno de ${emp.name}? Se registrará la hora de salida.`, () => onAddKey(emp.id, 'SALIDA', 'shift_out'))
-              }
-            }}
-          />
-          <button
-            onClick={() => {
-              if (!enabled) return
-              if (!input) return
-              onAddKey(emp.id, input)
-              setInput('')
-            }}
-            disabled={!enabled}
-            className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold text-white ${!enabled ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-blue-600'}`}
-          >
-            OK
-          </button>
-        </div>
-        <p className="mt-1 text-[10px] text-slate-400">Enter = registrar · Ctrl+Enter = salida</p>
-      </td>
+      {/* columna 'Registrar clave' eliminada */}
 
       {/* CLAVES ABIERTAS + HISTORIAL */}
       <td className="px-3 py-3 align-top">
@@ -560,12 +522,12 @@ export default function KeysPage() {
                 <th className="px-3 py-2 text-left font-semibold">Empleado</th>
                 <th className="px-3 py-2 text-left font-semibold">Turno</th>
                 <th className="px-3 py-2 text-left font-semibold">Descansos rápidos</th>
-                <th className="px-3 py-2 text-left font-semibold">Registrar clave</th>
-                <th className="px-3 py-2 text-left font-semibold">Claves abiertas e historial</th>
+                <th className="px-3 py-2 text-left font-semibold">Historial de Marcas</th>
               </tr>
             </thead>
+            
             <tbody>
-              {filteredEmployees.length === 0 && (<tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">No hay coincidencias con la búsqueda o no hay personas en servicio.</td></tr>)}
+              {filteredEmployees.length === 0 && (<tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">No hay coincidencias con la búsqueda o no hay personas en servicio.</td></tr>)}
               {filteredEmployees.map(emp => (
                 <EmployeeRow
                   key={emp.id}

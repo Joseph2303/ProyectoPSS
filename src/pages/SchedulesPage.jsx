@@ -41,10 +41,9 @@ function scheduleOverlapsRange(schedule, start, end) {
 }
 
 /* FORMULARIO DE HORARIO (simple) */
-function ScheduleForm({ onSave, initial, employees, turns, onCancelEdit }) {
+function ScheduleForm({ onSave, initial, employees, onCancelEdit }) {
   const empty = {
     employeeId: '',
-    turnId: '',
     days: [],
     freeDay: '',
     startDate: '',
@@ -54,7 +53,16 @@ function ScheduleForm({ onSave, initial, employees, turns, onCancelEdit }) {
   const [form, setForm] = useState(initial || empty)
 
   useEffect(() => {
-    setForm(initial || empty)
+    if (!initial) { setForm(empty); return }
+    // normalize initial: some callers pass an "enriched" schedule with _emp
+    const normalized = {
+      employeeId: initial.employeeId || (initial._emp && initial._emp.id) || '',
+      days: initial.days || [],
+      freeDay: initial.freeDay || '',
+      startDate: initial.startDate || '',
+      endDate: initial.endDate || ''
+    }
+    setForm(normalized)
   }, [initial])
 
   function toggleDay(d) {
@@ -115,22 +123,7 @@ function ScheduleForm({ onSave, initial, employees, turns, onCancelEdit }) {
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-slate-600">Turno</label>
-            <select
-              value={form.turnId}
-              onChange={e => setForm({ ...form, turnId: e.target.value })}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione un turno...</option>
-              {turns.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name}{' '}
-                  {t.startTime && t.endTime ? `(${t.startTime} - ${t.endTime})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Turno: ya no se selecciona aquí (se asigna en Puestos/Asignaciones) */}
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-slate-600">
@@ -225,6 +218,9 @@ export default function SchedulesPage() {
   const [schedules, setSchedules] = useState([])
   const [employees, setEmployees] = useState([])
   const [turns, setTurns] = useState([])
+  const [positions, setPositions] = useState([])
+  const [assignments, setAssignments] = useState([])
+  const [turnAssignments, setTurnAssignments] = useState([])
   const [editing, setEditing] = useState(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -251,6 +247,9 @@ export default function SchedulesPage() {
       setSchedules(api.getSchedules())
       setEmployees(api.getEmployees())
       setTurns(api.getTurns())
+      setTurnAssignments(api.getTurnAssignments())
+      setPositions(api.getPositions ? api.getPositions() : [])
+      setAssignments(api.getAssignments ? api.getAssignments() : [])
     } catch (err) {
       console.error(err)
       toast.error('Error cargando los datos de horarios')
@@ -265,15 +264,43 @@ export default function SchedulesPage() {
   function refresh() {
     try {
       setSchedules(api.getSchedules())
+      setTurnAssignments(api.getTurnAssignments())
+      setPositions(api.getPositions ? api.getPositions() : [])
+      setAssignments(api.getAssignments ? api.getAssignments() : [])
     } catch (err) {
       console.error(err)
       toast.error('No se pudieron refrescar los horarios')
     }
   }
 
+  // Escuchar cambios en turnAssignments realizados en otras pantallas/ventanas
+  useEffect(() => {
+    function onStorage(e) {
+      try {
+        if (!e) return
+        if (e.key === 'ci:turnAssignments:changed') {
+          // cuando cambian las asignaciones rápidas en otra pestaña
+          refresh()
+        }
+      } catch (err) {
+        console.error('storage handler error', err)
+      }
+    }
+
+    // listener para cambios desde otras pestañas (storage)
+    window.addEventListener('storage', onStorage)
+    // listener custom para cambios emitidos en la misma pestaña
+    window.addEventListener('ci:turnAssignments:changed', refresh)
+
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('ci:turnAssignments:changed', refresh)
+    }
+  }, [])
+
   function handleSave(form, onSuccessReset) {
-    if (!form.employeeId || !form.turnId) {
-      toast.error('Debe seleccionar empleado y turno')
+    if (!form.employeeId) {
+      toast.error('Debe seleccionar un empleado')
       return
     }
     if (!form.days || form.days.length === 0) {
@@ -323,10 +350,22 @@ export default function SchedulesPage() {
     toast('Edición cancelada', { icon: '↩️' })
   }
 
-  // Enriquecer con empleado y turno
+  // Enriquecer con empleado y posible jornada (turn)
+  // Enriquecer schedules: preferir schedule.turnId, si no existe tomar la asignación rápida (turnAssignments)
   const enrichedSchedules = schedules.map(s => {
     const emp = employees.find(e => e.id === s.employeeId) || {}
-    const turn = turns.find(t => t.id === s.turnId) || {}
+    // resolver el puesto desde assignments -> positions
+    const assign = assignments.find(a => a.employeeId === s.employeeId)
+    const pos = assign && positions.find(p => p.id === assign.positionId)
+    if (pos) emp.position = pos.name
+    // Preferir la asignación rápida (turnAssignments) sobre el turnId del schedule
+    let turn = null
+    const ta = turnAssignments.find(a => a.employeeId === s.employeeId)
+    if (ta) {
+      turn = turns.find(t => t.id === ta.turnId) || null
+    } else if (s.turnId) {
+      turn = turns.find(t => t.id === s.turnId) || null
+    }
     return { ...s, _emp: emp, _turn: turn }
   })
 
@@ -351,7 +390,7 @@ export default function SchedulesPage() {
     const haystack = [
       s._emp.name || '',
       s._emp.position || '',
-      s._turn.name || '',
+      s._turn ? s._turn.name : '',
       (s.days || []).join(' '),
       s.freeDay || '',
       s.startDate || '',
@@ -376,7 +415,7 @@ export default function SchedulesPage() {
             Horarios de trabajo
           </h2>
           <p className="text-sm text-slate-500">
-            Asigna turnos a las personas empleadas y consulta los horarios existentes.
+            Gestiona los horarios asignados a las personas empleadas y consulta los registros existentes.
           </p>
           <p className="mt-1 text-xs text-slate-400">
             Mostrando{' '}
@@ -391,7 +430,6 @@ export default function SchedulesPage() {
         onSave={handleSave}
         initial={editing}
         employees={employees}
-        turns={turns}
         onCancelEdit={handleCancelEdit}
       />
 
@@ -479,7 +517,7 @@ export default function SchedulesPage() {
           <span className="font-semibold text-slate-600">Buscar texto</span>
           <input
             type="text"
-            placeholder="Nombre, turno, días..."
+            placeholder="Nombre, días..."
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
             className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -516,7 +554,8 @@ export default function SchedulesPage() {
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-xs uppercase tracking-wide text-slate-600">
                 <th className="px-4 py-2 text-left">Empleado</th>
-                <th className="px-4 py-2 text-left">Turno</th>
+                <th className="px-4 py-2 text-left">Puesto</th>
+                <th className="px-4 py-2 text-left">Jornada</th>
                 <th className="px-4 py-2 text-left">Días</th>
                 <th className="px-4 py-2 text-left">Día libre</th>
                 <th className="px-4 py-2 text-left">Inicio</th>
@@ -541,18 +580,23 @@ export default function SchedulesPage() {
                   key={s.id}
                   className="border-b border-slate-100 hover:bg-slate-50 transition"
                 >
-                  <td className="px-4 py-2">
-                    {s._emp.name || '—'}
-                    {s._emp.position && (
-                      <span className="ml-1 text-[11px] text-slate-400">
-                        ({s._emp.position})
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">{s._turn.name || '—'}</td>
-                  <td className="px-4 py-2">
-                    {s.days && s.days.length ? s.days.join(', ') : '—'}
-                  </td>
+                  <td className="px-4 py-2">{s._emp.name || '—'}</td>
+                    <td className="px-4 py-2">{s._emp.position || '—'}</td>
+                    <td className="px-4 py-2">
+                      {s._turn ? (
+                        <div className="text-sm">
+                          <div className="font-medium">{s._turn.name}</div>
+                          {s._turn.startTime && s._turn.endTime && (
+                            <div className="text-[11px] text-slate-400">{s._turn.startTime} - {s._turn.endTime}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      {s.days && s.days.length ? s.days.join(', ') : '—'}
+                    </td>
                   <td className="px-4 py-2">{s.freeDay || '—'}</td>
                   <td className="px-4 py-2">{s.startDate || '—'}</td>
                   <td className="px-4 py-2">{s.endDate || '—'}</td>
