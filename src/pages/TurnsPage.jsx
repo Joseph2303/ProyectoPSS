@@ -80,11 +80,16 @@ export default function TurnsPage() {
   const [turnAssignments, setTurnAssignments] = useState([])
   const [selectedEmployee, setSelectedEmployee] = useState('')
   const [selectedTurnId, setSelectedTurnId] = useState('')
+  const [employeeSelectSearch, setEmployeeSelectSearch] = useState('')
+  const [turnSelectSearch, setTurnSelectSearch] = useState('')
+  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false)
+  const [turnDropdownOpen, setTurnDropdownOpen] = useState(false)
   const [assignFilterTurn, setAssignFilterTurn] = useState('')
   const [assignSortBy, setAssignSortBy] = useState('employee')
   const [assignSortDir, setAssignSortDir] = useState('asc')
   const [assignPage, setAssignPage] = useState(1)
   const [assignPageSize, setAssignPageSize] = useState(6)
+  const [assignSearch, setAssignSearch] = useState('')
   const [editingAssignment, setEditingAssignment] = useState(null)
 
   const [page, setPage] = useState(1)
@@ -220,6 +225,10 @@ export default function TurnsPage() {
   }
 
   function askDelete(turn) {
+    if (turn && turn.fixed) {
+      toast('Esta jornada es fija y no se puede eliminar', { icon: 'ℹ️' })
+      return
+    }
     setTurnToDelete(turn)
     setConfirmOpen(true)
   }
@@ -322,8 +331,14 @@ export default function TurnsPage() {
                     <td className="px-4 py-2">{t.startTime || '-'}</td>
                     <td className="px-4 py-2">{t.endTime || '-'}</td>
                     <td className="px-4 py-2 flex gap-2">
-                      <button onClick={() => setEditing(t)} className="px-3 py-1 rounded-md bg-blue-100 text-blue-700 text-xs font-semibold hover:bg-blue-200 transition">Editar</button>
-                      <button onClick={() => askDelete(t)} className="px-3 py-1 rounded-md bg-red-100 text-red-700 text-xs font-semibold hover:bg-red-200 transition">Eliminar</button>
+                      {t.fixed ? (
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-700">Fija</span>
+                      ) : (
+                        <>
+                          <button onClick={() => setEditing(t)} className="px-3 py-1 rounded-md bg-blue-100 text-blue-700 text-xs font-semibold hover:bg-blue-200 transition">Editar</button>
+                          <button onClick={() => askDelete(t)} className="px-3 py-1 rounded-md bg-red-100 text-red-700 text-xs font-semibold hover:bg-red-200 transition">Eliminar</button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -343,16 +358,83 @@ export default function TurnsPage() {
 
           <form onSubmit={handleQuickAssign} className="flex flex-col gap-3">
             <label className="text-xs text-slate-600">Empleado</label>
-            <select value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)} className="rounded-full border px-3 py-2 text-sm">
-              <option value="">Seleccione empleado...</option>
-              {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-            </select>
+            {(() => {
+              const displayEmp = emp => emp?.name || (emp?.firstName ? `${emp.firstName} ${emp.lastName || ''}` : emp?.id)
+              const selectedEmp = employees.find(e => e.id === selectedEmployee)
+              const inputValue = employeeSelectSearch !== '' ? employeeSelectSearch : (selectedEmp ? displayEmp(selectedEmp) : '')
+              const filtered = employees.filter(emp => {
+                const hay = displayEmp(emp).toLowerCase()
+                return (employeeSelectSearch || '').trim() === '' ? true : hay.includes(employeeSelectSearch.trim().toLowerCase())
+              })
+
+              return (
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Buscar o seleccionar empleado..."
+                    value={inputValue}
+                    onChange={e => { setEmployeeSelectSearch(e.target.value); setSelectedEmployee(''); setEmployeeDropdownOpen(true) }}
+                    onFocus={() => setEmployeeDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setEmployeeDropdownOpen(false), 150)}
+                    className="w-full rounded-full border px-3 py-2 text-sm"
+                  />
+                  {inputValue && (
+                    <button type="button" onClick={() => { setEmployeeSelectSearch(''); setSelectedEmployee('') }} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">✕</button>
+                  )}
+
+                  {employeeDropdownOpen && (
+                    <div className="absolute z-20 mt-2 w-full max-h-48 overflow-auto rounded-md border bg-white shadow-lg">
+                      {filtered.length === 0 ? (
+                        <div className="p-2 text-xs text-slate-400">No hay coincidencias</div>
+                      ) : (
+                        filtered.map(emp => (
+                          <div key={emp.id} onMouseDown={() => { setSelectedEmployee(emp.id); setEmployeeSelectSearch(''); setEmployeeDropdownOpen(false) }} className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer">{displayEmp(emp)}</div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             <label className="text-xs text-slate-600">Jornada</label>
-            <select value={selectedTurnId} onChange={e => setSelectedTurnId(e.target.value)} className="rounded-full border px-3 py-2 text-sm">
-              <option value="">Seleccione jornada...</option>
-              {items.map(t => <option key={t.id} value={t.id}>{t.name} {t.startTime ? `(${t.startTime} - ${t.endTime})` : ''}</option>)}
-            </select>
+            {(() => {
+              const selectedTurn = items.find(t => t.id === selectedTurnId)
+              const inputValue = turnSelectSearch !== '' ? turnSelectSearch : (selectedTurn ? `${selectedTurn.name} ${selectedTurn.startTime ? `(${selectedTurn.startTime} - ${selectedTurn.endTime})` : ''}` : '')
+              const filtered = items.filter(t => {
+                const hay = `${t.name} ${t.startTime || ''} ${t.endTime || ''}`.toLowerCase()
+                return (turnSelectSearch || '').trim() === '' ? true : hay.includes(turnSelectSearch.trim().toLowerCase())
+              })
+
+              return (
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Buscar o seleccionar jornada..."
+                    value={inputValue}
+                    onChange={e => { setTurnSelectSearch(e.target.value); setSelectedTurnId(''); setTurnDropdownOpen(true) }}
+                    onFocus={() => setTurnDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setTurnDropdownOpen(false), 150)}
+                    className="w-full rounded-full border px-3 py-2 text-sm"
+                  />
+                  {inputValue && (
+                    <button type="button" onClick={() => { setTurnSelectSearch(''); setSelectedTurnId('') }} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">✕</button>
+                  )}
+
+                  {turnDropdownOpen && (
+                    <div className="absolute z-20 mt-2 w-full max-h-48 overflow-auto rounded-md border bg-white shadow-lg">
+                      {filtered.length === 0 ? (
+                        <div className="p-2 text-xs text-slate-400">No hay coincidencias</div>
+                      ) : (
+                        filtered.map(t => (
+                          <div key={t.id} onMouseDown={() => { setSelectedTurnId(t.id); setTurnSelectSearch(''); setTurnDropdownOpen(false) }} className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer">{t.name} {t.startTime ? `(${t.startTime} - ${t.endTime})` : ''}</div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             <div className="flex gap-2">
               <button className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm">Asignar jornada</button>
@@ -363,6 +445,13 @@ export default function TurnsPage() {
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-semibold">Asignaciones</h4>
                 <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Buscar asignación..."
+                    value={assignSearch}
+                    onChange={e => { setAssignSearch(e.target.value); setAssignPage(1) }}
+                    className="text-xs rounded-full border px-2 py-1"
+                  />
                   <select value={assignFilterTurn} onChange={e => { setAssignFilterTurn(e.target.value); setAssignPage(1) }} className="text-xs rounded-full border px-2 py-1">
                     <option value="">Todas las jornadas</option>
                     {items.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -373,6 +462,12 @@ export default function TurnsPage() {
               <div className="space-y-2 max-h-[55vh] overflow-auto pr-1">
                 {(() => {
                   const assignments = api.getTurnAssignments().filter(s => (!selectedEmployee || s.employeeId === selectedEmployee) && (!assignFilterTurn || s.turnId === assignFilterTurn))
+                  const searchQ = (assignSearch || '').trim().toLowerCase()
+                  const filteredBySearch = searchQ ? assignments.filter(s => {
+                    const empName = (employees.find(e => e.id === s.employeeId)?.name || '').toLowerCase()
+                    const turnName = (items.find(t => t.id === s.turnId)?.name || '').toLowerCase()
+                    return empName.includes(searchQ) || turnName.includes(searchQ)
+                  }) : assignments
                   if (assignments.length === 0) return <div className="text-xs text-slate-400">Sin asignaciones</div>
 
                   // sort
@@ -383,7 +478,7 @@ export default function TurnsPage() {
                   })
 
                   const start = (assignPage - 1) * assignPageSize
-                  const pageItems = assignments.slice(start, start + assignPageSize)
+                  const pageItems = filteredBySearch.slice(start, start + assignPageSize)
 
                   return (
                     <>

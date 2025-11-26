@@ -7,19 +7,32 @@ const SAMPLE = {
     { id: 'e3', name: 'Luis Torres' }
   ],
   turns: [
-    { id: 't1', name: 'Matutino', startTime: '06:00', endTime: '14:00' },
-    { id: 't2', name: 'Vespertino', startTime: '14:00', endTime: '22:00' },
-    { id: 't3', name: 'Nocturno', startTime: '22:00', endTime: '06:00' }
+    // Jornadas fijas básicas
+    { id: 'f_b_06_14', name: 'Matutino (06:00-14:00)', startTime: '06:00', endTime: '14:00', fixed: true },
+    { id: 'f_b_14_22', name: 'Vespertino (14:00-22:00)', startTime: '14:00', endTime: '22:00', fixed: true },
+    { id: 'f_b_22_06', name: 'Nocturno (22:00-06:00)', startTime: '22:00', endTime: '06:00', fixed: true },
+    { id: 'f_b_06_18', name: 'Extendido (06:00-18:00)', startTime: '06:00', endTime: '18:00', fixed: true },
+    { id: 'f_b_18_06', name: 'Extendido Nocturno (18:00-06:00)', startTime: '18:00', endTime: '06:00', fixed: true },
+    // Jornadas secundarias
+    { id: 'f_s_07_19', name: 'Secundaria (07:00-19:00)', startTime: '07:00', endTime: '19:00', fixed: true },
+    { id: 'f_s_09_18', name: 'Secundaria (09:00-18:00)', startTime: '09:00', endTime: '18:00', fixed: true },
+    { id: 'f_s_10_18', name: 'Secundaria (10:00-18:00)', startTime: '10:00', endTime: '18:00', fixed: true },
+    { id: 'f_s_11_17', name: 'Secundaria (09:00-17:00)', startTime: '09:00', endTime: '17:00', fixed: true },
+    { id: 'f_s_12_18', name: 'Secundaria (08:00-19:00)', startTime: '08:00', endTime: '19:00', fixed: true },
+    { id: 'f_s_13_19', name: 'Secundaria (09:00-19:00)', startTime: '09:00', endTime: '19:00', fixed: true },
+    { id: 'f_s_14_20', name: 'Secundaria (12:00-20:00)', startTime: '12:00', endTime: '20:00', fixed: true },
+    { id: 'f_s_15_21', name: 'Secundaria (07:00-17:30)', startTime: '07:00', endTime: '17:30', fixed: true },
+    { id: 'f_s_16_22', name: 'Secundaria (05:30-13:30)', startTime: '05:30', endTime: '13:30', fixed: true },
   ],
   schedules: [
-    { id: 's1', employeeId: 'e1', turnId: 't1', days: ['Lun','Mar','Mié','Jue','Vie'], freeDay: 'Dom', startDate: '2025-11-01', endDate: '2025-11-30' },
-    { id: 's2', employeeId: 'e1', turnId: 't2', days: ['Sáb','Dom'], freeDay: 'Mié', startDate: '2025-12-01', endDate: '2025-12-31' },
-    { id: 's3', employeeId: 'e2', turnId: 't2', days: ['Lun','Mar','Mié','Jue','Vie'], freeDay: 'Sáb', startDate: '2025-11-01', endDate: '2025-11-30' }
+    { id: 's1', employeeId: 'e1', turnId: 'f_b_06_14', days: ['Lun','Mar','Mié','Jue','Vie'], freeDay: 'Dom', startDate: '2025-11-01', endDate: '2025-11-30' },
+    { id: 's2', employeeId: 'e1', turnId: 'f_b_06_14', days: ['Sáb','Dom'], freeDay: 'Mié', startDate: '2025-12-01', endDate: '2025-12-31' },
+    { id: 's3', employeeId: 'e2', turnId: 'f_b_06_14', days: ['Lun','Mar','Mié','Jue','Vie'], freeDay: 'Sáb', startDate: '2025-11-01', endDate: '2025-11-30' }
   ],
   // quick turn assignments (employee <-> turn) separate from schedules
   turnAssignments: [
-    { id: 'ta1', employeeId: 'e1', turnId: 't1' },
-    { id: 'ta2', employeeId: 'e2', turnId: 't2' }
+    { id: 'ta1', employeeId: 'e1', turnId: 'f_b_06_14' },
+    { id: 'ta2', employeeId: 'e2', turnId: 'f_b_06_14' }
   ],
   keys: [],
   reports: [],
@@ -92,8 +105,8 @@ export const api = {
   // Turns
   getTurns(){ return load().turns },
   addTurn(t){ const s=load(); t.id=uid(); s.turns.push(t); save(s); return t },
-  updateTurn(id, patch){ const s=load(); const i=s.turns.findIndex(t=>t.id===id); if(i===-1) return null; s.turns[i]={...s.turns[i],...patch}; save(s); return s.turns[i] },
-  deleteTurn(id){ const s=load(); s.turns=s.turns.filter(t=>t.id!==id); save(s); return true },
+  updateTurn(id, patch){ const s=load(); const i=s.turns.findIndex(t=>t.id===id); if(i===-1) return null; if (s.turns[i].fixed) return null; s.turns[i]={...s.turns[i],...patch}; save(s); return s.turns[i] },
+  deleteTurn(id){ const s=load(); const t = s.turns.find(x=>x.id===id); if (t && t.fixed) return false; s.turns=s.turns.filter(t=>t.id!==id); save(s); return true },
 
   // Schedules
   getSchedules(){ return load().schedules },

@@ -16,7 +16,7 @@ export default function WelcomePage() {
             onClick={() => nav('/claves')}
             className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700"
           >
-            Ir a Registro de Claves
+            Marcas de Empleados
           </button>
 
           <button

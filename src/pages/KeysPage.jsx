@@ -495,7 +495,7 @@ export default function KeysPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Registro de claves en tiempo real</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Marcas de Empleados - tiempo real</h2>
           <p className="text-sm text-slate-500">Control de entradas, salidas y descansos por persona empleada.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs">

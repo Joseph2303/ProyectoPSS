@@ -150,7 +150,7 @@ export default function App() {
                 Horarios
               </NavLink>
               <NavLink to="/claves" className={navLinkClass}>
-                Registro de Claves
+                Marcas de Empleados
               </NavLink>
               <NavLink to="/reportes" className={navLinkClass}>
                 Reportes
