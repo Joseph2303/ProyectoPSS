@@ -96,12 +96,13 @@ export default function PositionsPage(){
         <div className="bg-white rounded-xl p-4 border border-slate-200">
           <h3 className="text-sm font-semibold mb-3">Asignaciones</h3>
           <form onSubmit={saveAssign} className="grid grid-cols-1 gap-2">
-            {/* Combo buscable: Empleado */}
+            {/* Combo buscable: Empleado (solo activos) */}
             {(() => {
-              const selected = employees.find(e => e.id === assignForm.employeeId)
+              const activeEmployees = employees.filter(e => e.active !== false)
+              const selected = activeEmployees.find(e => e.id === assignForm.employeeId)
               const display = emp => emp?.name || emp?.id
               const inputValue = employeeAssignSearch !== '' ? employeeAssignSearch : (selected ? display(selected) : '')
-              const filtered = employees.filter(emp => (employeeAssignSearch || '').trim() === '' ? true : display(emp).toLowerCase().includes(employeeAssignSearch.trim().toLowerCase()))
+              const filtered = activeEmployees.filter(emp => (employeeAssignSearch || '').trim() === '' ? true : display(emp).toLowerCase().includes(employeeAssignSearch.trim().toLowerCase()))
 
               return (
                 <div className="relative">
@@ -182,29 +183,33 @@ export default function PositionsPage(){
                 </tr>
               </thead>
               <tbody>
-                {assignments.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="text-center text-xs text-slate-400 py-4">Sin asignaciones</td>
-                  </tr>
-                )}
-
-                {assignments.map(a => {
-                  const emp = employees.find(e => e.id === a.employeeId)
-                  const pos = positions.find(p => p.id === a.positionId)
-                  return (
-                    <tr key={a.employeeId} className="border-b last:border-0 hover:bg-slate-50">
-                      <td className="px-4 py-2">{emp?.name || a.employeeId}</td>
-                      <td className="px-4 py-2">{pos?.name || '—'}</td>
-                      <td className="px-4 py-2"><span className="text-xs text-slate-500">{a.code || '—'}</span></td>
-                      <td className="px-4 py-2">
-                        <div className="flex gap-2">
-                          <button onClick={() => { setAssignForm({ employeeId: a.employeeId, positionId: a.positionId, code: a.code }) }} className="text-xs px-2 py-1 rounded-full bg-slate-100">Editar</button>
-                          <button onClick={() => unassign(a.employeeId)} className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">Quitar</button>
-                        </div>
-                      </td>
+                {(() => {
+                  const activeIds = new Set(employees.filter(e => e.active !== false).map(e => e.id))
+                  const visibleAssignments = assignments.filter(a => activeIds.has(a.employeeId))
+                  if (visibleAssignments.length === 0) return (
+                    <tr>
+                      <td colSpan={4} className="text-center text-xs text-slate-400 py-4">Sin asignaciones</td>
                     </tr>
                   )
-                })}
+
+                  return visibleAssignments.map(a => {
+                    const emp = employees.find(e => e.id === a.employeeId)
+                    const pos = positions.find(p => p.id === a.positionId)
+                    return (
+                      <tr key={a.employeeId} className="border-b last:border-0 hover:bg-slate-50">
+                        <td className="px-4 py-2">{emp?.name || a.employeeId}</td>
+                        <td className="px-4 py-2">{pos?.name || '—'}</td>
+                        <td className="px-4 py-2"><span className="text-xs text-slate-500">{a.code || '—'}</span></td>
+                        <td className="px-4 py-2">
+                          <div className="flex gap-2">
+                            <button onClick={() => { setAssignForm({ employeeId: a.employeeId, positionId: a.positionId, code: a.code }) }} className="text-xs px-2 py-1 rounded-full bg-slate-100">Editar</button>
+                            <button onClick={() => unassign(a.employeeId)} className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">Quitar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                })()}
               </tbody>
             </table>
           </div>

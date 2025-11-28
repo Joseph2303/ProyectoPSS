@@ -6,21 +6,27 @@ import Pagination from '../components/Pagination'
 
 /* FORMULARIO DE EMPLEADO */
 function EmployeeForm({ onSave, initial, onCancelEdit }) {
-  const empty = { firstName: '', lastName: '' }
+  const empty = { firstName: '', lastName: '', email: '', phone: '', cedula: '', address: '', emergencyContact: '' }
 
-  const [form, setForm] = useState(initial || empty)
+  const [form, setForm] = useState(initial || { ...empty, active: true })
 
   // Cuando recibimos `initial` debemos soportar objetos antiguos con `name`
   useEffect(() => {
     if (!initial) {
-      setForm(empty)
+      setForm({ ...empty, active: true })
       return
     }
 
     const first = initial.firstName ?? (initial.name ? initial.name.split(' ')[0] : '')
     const last = initial.lastName ?? (initial.name ? initial.name.split(' ').slice(1).join(' ') : '')
+    const active = initial.active === undefined ? true : Boolean(initial.active)
+    const email = initial.email || ''
+    const phone = initial.phone || ''
+    const cedula = initial.cedula || ''
+    const address = initial.address || ''
+    const emergencyContact = initial.emergencyContact || ''
 
-    setForm({ ...initial, firstName: first, lastName: last })
+    setForm({ ...initial, firstName: first, lastName: last, active, email, phone, cedula, address, emergencyContact })
   }, [initial])
 
   function handleSubmit(e) {
@@ -29,14 +35,14 @@ function EmployeeForm({ onSave, initial, onCancelEdit }) {
   }
 
   function handleReset() {
-    setForm(empty)
+    setForm({ ...empty, active: true })
     onCancelEdit && onCancelEdit()
   }
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200"
+      className="flex flex-col gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200"
     >
       <input
         placeholder="Nombre"
@@ -52,11 +58,49 @@ function EmployeeForm({ onSave, initial, onCancelEdit }) {
         className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
       />
 
-      {/* Botones ocupan las dos columnas restantes en md */}
-      <div className="flex gap-2 md:col-span-2">
+      <input
+        placeholder="Correo electrónico"
+        value={form.email}
+        onChange={e => setForm({ ...form, email: e.target.value })}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+      />
+
+      <input
+        placeholder="Teléfono"
+        value={form.phone}
+        onChange={e => setForm({ ...form, phone: e.target.value })}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+      />
+      <input
+        placeholder="Cédula"
+        value={form.cedula}
+        onChange={e => setForm({ ...form, cedula: e.target.value })}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+      />
+
+      <input
+        placeholder="Dirección"
+        value={form.address}
+        onChange={e => setForm({ ...form, address: e.target.value })}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+      />
+
+      <input
+        placeholder="Contacto de emergencia"
+        value={form.emergencyContact}
+        onChange={e => setForm({ ...form, emergencyContact: e.target.value })}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+      />
+
+      <div className="flex flex-col gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={!!form.active} onChange={e => setForm({ ...form, active: e.target.checked })} className="rounded" />
+          <span className="text-sm">Activo</span>
+        </label>
+
         <button
           type="submit"
-          className="flex-1 rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
+          className="w-full rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
         >
           {initial ? 'Actualizar' : 'Guardar'}
         </button>
@@ -65,7 +109,7 @@ function EmployeeForm({ onSave, initial, onCancelEdit }) {
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
           >
             Cancelar
           </button>
@@ -78,7 +122,10 @@ function EmployeeForm({ onSave, initial, onCancelEdit }) {
 /* PÁGINA PRINCIPAL */
 export default function EmployeesPage() {
   const [items, setItems] = useState([])
+  const [positions, setPositions] = useState([])
+  const [assignments, setAssignments] = useState([])
   const [editing, setEditing] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -93,14 +140,26 @@ export default function EmployeesPage() {
   // estado para modal de confirmación
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [employeeToDelete, setEmployeeToDelete] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(null)
 
   useEffect(() => {
     try {
       setItems(api.getEmployees())
+      setPositions(api.getPositions ? api.getPositions() : [])
+      setAssignments(api.getAssignments ? api.getAssignments() : [])
     } catch (err) {
       console.error(err)
       toast.error('Error cargando la lista de empleados')
     }
+  }, [])
+
+  // cerrar menú de acciones al hacer click fuera
+  useEffect(() => {
+    function onDocClick() {
+      setMenuOpen(null)
+    }
+    window.addEventListener('click', onDocClick)
+    return () => window.removeEventListener('click', onDocClick)
   }, [])
 
   // reset page when filters or items change
@@ -111,6 +170,8 @@ export default function EmployeesPage() {
   function refresh() {
     try {
       setItems(api.getEmployees())
+      setPositions(api.getPositions ? api.getPositions() : [])
+      setAssignments(api.getAssignments ? api.getAssignments() : [])
     } catch (err) {
       console.error(err)
       toast.error('No se pudieron refrescar los empleados')
@@ -120,6 +181,11 @@ export default function EmployeesPage() {
   function handleSave(emp, resetCb) {
     const firstName = (emp.firstName || '').trim()
     const lastName = (emp.lastName || '').trim()
+    const email = (emp.email || '').trim()
+    const phone = (emp.phone || '').trim()
+    const cedula = (emp.cedula || '').trim()
+    const address = (emp.address || '').trim()
+    const emergencyContact = (emp.emergencyContact || '').trim()
 
     if (!firstName) {
       toast.error('El empleado debe tener al menos un nombre')
@@ -129,12 +195,24 @@ export default function EmployeesPage() {
     const fullName = `${firstName}${lastName ? ' ' + lastName : ''}`
 
     try {
+      const payload = {
+        ...emp,
+        firstName,
+        lastName,
+        email,
+        phone,
+        cedula,
+        address,
+        emergencyContact,
+        name: fullName,
+      }
+
       if (editing) {
-        api.updateEmployee(editing.id, { ...emp, firstName, lastName, name: fullName })
+        api.updateEmployee(editing.id, payload)
         toast.success('Empleado actualizado correctamente')
         setEditing(null)
       } else {
-        api.addEmployee({ ...emp, firstName, lastName, name: fullName })
+        api.addEmployee(payload)
         toast.success('Empleado registrado correctamente')
       }
       refresh()
@@ -147,6 +225,7 @@ export default function EmployeesPage() {
 
   function handleCancelEdit() {
     setEditing(null)
+    setFormOpen(false)
     toast('Edición cancelada', { icon: '↩️' })
   }
 
@@ -174,7 +253,14 @@ export default function EmployeesPage() {
   const normalizedSearch = search.trim().toLowerCase()
   const tokens = normalizedSearch.split(/\s+/).filter(Boolean)
 
-  const filteredItems = items.filter(emp => {
+  // Enriquecer empleados con su puesto (si existe)
+  const enrichedItems = items.map(it => {
+    const assign = assignments.find(a => String(a.employeeId) === String(it.id))
+    const pos = assign && positions.find(p => String(p.id) === String(assign.positionId))
+    return { ...it, position: pos ? pos.name : undefined }
+  })
+
+  const filteredItems = enrichedItems.filter(emp => {
     if (tokens.length === 0) return true
 
     const haystack = `${emp.firstName || (emp.name || '').split(' ')[0] || ''} ${
@@ -194,9 +280,7 @@ export default function EmployeesPage() {
       {/* HEADER + BUSCADOR */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">
-            Gestión de empleados
-          </h2>
+          <h2 className="text-xl font-semibold text-slate-900">Gestión de empleados</h2>
           <p className="text-sm text-slate-500">
             Registra, edita o elimina empleados del sistema.
           </p>
@@ -238,12 +322,29 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* FORMULARIO */}
-      <EmployeeForm
-        onSave={handleSave}
-        initial={editing}
-        onCancelEdit={handleCancelEdit}
-      />
+      {/* BOTÓN PARA ABRIR FORMULARIO EN MODAL */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => { setEditing(null); setFormOpen(true) }}
+          className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition shadow-sm"
+        >
+          Nuevo empleado
+        </button>
+      </div>
+
+      {/* MODAL DEL FORMULARIO */}
+      <EmployeeModal open={formOpen} onClose={() => { setFormOpen(false); setEditing(null) }}>
+        <EmployeeForm
+          onSave={(emp, resetCb) => {
+            handleSave(emp, () => {
+              resetCb && resetCb()
+              setFormOpen(false)
+            })
+          }}
+          initial={editing}
+          onCancelEdit={() => { handleCancelEdit(); setFormOpen(false) }}
+        />
+      </EmployeeModal>
 
       {/* TABLA */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -252,6 +353,13 @@ export default function EmployeesPage() {
             <tr className="text-slate-600 text-xs uppercase tracking-wide">
               <th className="px-4 py-2 text-left">Nombre</th>
               <th className="px-4 py-2 text-left">Apellidos</th>
+              <th className="px-4 py-2 text-left">Correo</th>
+              <th className="px-4 py-2 text-left">Teléfono</th>
+              <th className="px-4 py-2 text-left">Cédula</th>
+              <th className="px-4 py-2 text-left">Dirección</th>
+              <th className="px-4 py-2 text-left">Contacto emergencia</th>
+              <th className="px-4 py-2 text-left">Puesto</th>
+              <th className="px-4 py-2 text-left">Estado</th>
               <th className="px-4 py-2 text-left">Acciones</th>
             </tr>
           </thead>
@@ -259,7 +367,7 @@ export default function EmployeesPage() {
           <tbody>
             {filteredItems.length === 0 && (
               <tr>
-                <td colSpan={3} className="text-center text-slate-400 py-6">
+                <td colSpan={10} className="text-center text-slate-400 py-6">
                   No se encontraron empleados con ese criterio de búsqueda.
                 </td>
               </tr>
@@ -274,19 +382,54 @@ export default function EmployeesPage() {
                   const first = it.firstName ?? (it.name ? it.name.split(' ')[0] : '')
                   const last = it.lastName ?? (it.name ? it.name.split(' ').slice(1).join(' ') : '')
                   return (
-                    <>
-                      <td className="px-4 py-2">{first}</td>
-                      <td className="px-4 py-2">{last}</td>
-                    </>
+                          <>
+                            <td className="px-4 py-2">{first}</td>
+                            <td className="px-4 py-2">{last}</td>
+                            <td className="px-4 py-2">{it.email || '—'}</td>
+                            <td className="px-4 py-2">{it.phone || '—'}</td>
+                            <td className="px-4 py-2">{it.cedula || '—'}</td>
+                            <td className="px-4 py-2">{it.address || '—'}</td>
+                            <td className="px-4 py-2">{it.emergencyContact || '—'}</td>
+                            <td className="px-4 py-2">{it.position || '—'}</td>
+                            <td className="px-4 py-2">
+                              {it.active ? (
+                                <span className="px-2 py-1 text-xs rounded-full bg-emerald-100 text-emerald-700">Activo</span>
+                              ) : (
+                                <span className="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-600">Inactivo</span>
+                              )}
+                            </td>
+                          </>
                   )
                 })()}
                 <td className="px-4 py-2 flex gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!it.active}
+                      onChange={e => {
+                        const newVal = e.target.checked
+                        try {
+                          // enviar el objeto completo para evitar sobreescribir/omitir campos relacionados (p.ej. posición)
+                          api.updateEmployee(it.id, { ...it, active: newVal })
+                          toast.success(newVal ? 'Empleado activado' : 'Empleado desactivado')
+                          refresh()
+                        } catch (err) {
+                          console.error(err)
+                          toast.error('No se pudo cambiar el estado')
+                        }
+                      }}
+                      title={it.active ? 'Marcar como inactivo' : 'Marcar como activo'}
+                      className="form-checkbox h-4 w-4 text-blue-600"
+                    />
+                  </label>
+
                   <button
-                    onClick={() => setEditing(it)}
+                    onClick={() => { setEditing(it); setFormOpen(true) }}
                     className="px-3 py-1 rounded-md bg-blue-100 text-blue-700 text-xs font-semibold hover:bg-blue-200 transition"
                   >
                     Editar
                   </button>
+
 
                   <button
                     onClick={() => askDelete(it)}
@@ -377,6 +520,26 @@ function ConfirmModal({
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+/* MODAL PARA EL FORMULARIO DE EMPLEADO */
+function EmployeeModal({ open, onClose, children }) {
+  if (!open) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+
+      <div className="relative z-10 w-[min(900px,95%)] rounded-2xl bg-white shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-slate-900">Empleado</h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700">✕</button>
+        </div>
+        <div>{children}</div>
       </div>
     </div>,
     document.body

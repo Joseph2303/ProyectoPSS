@@ -346,7 +346,7 @@ export default function ReportsPage(){
               <tr className="text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2 text-left font-semibold">Fecha</th>
                 <th className="px-3 py-2 text-left font-semibold">Empleado</th>
-                <th className="px-3 py-2 text-left font-semibold">Turno</th>
+                <th className="px-3 py-2 text-left font-semibold">Jornada</th>
                 <th className="px-3 py-2 text-left font-semibold">Entrada</th>
                 <th className="px-3 py-2 text-left font-semibold">Salida</th>
                 <th className="px-3 py-2 text-left font-semibold">Duración</th>

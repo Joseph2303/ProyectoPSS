@@ -351,23 +351,30 @@ export default function SchedulesPage() {
   }
 
   // Enriquecer con empleado y posible jornada (turn)
+  // Sólo considerar empleados activos en esta vista
+  const activeEmployees = employees.filter(e => e.active !== false)
+  // Enriquecer lista de empleados con su puesto (si existe)
+  const enrichedEmployees = activeEmployees.map(e => {
+    const assign = assignments.find(a => String(a.employeeId) === String(e.id))
+    const pos = assign && positions.find(p => String(p.id) === String(assign.positionId))
+    return { ...e, position: pos ? pos.name : undefined }
+  })
+
   // Enriquecer schedules: preferir schedule.turnId, si no existe tomar la asignación rápida (turnAssignments)
   const enrichedSchedules = schedules.map(s => {
-    const emp = employees.find(e => e.id === s.employeeId) || {}
-    // resolver el puesto desde assignments -> positions
-    const assign = assignments.find(a => a.employeeId === s.employeeId)
-    const pos = assign && positions.find(p => p.id === assign.positionId)
-    if (pos) emp.position = pos.name
+    const emp = enrichedEmployees.find(e => String(e.id) === String(s.employeeId))
+    // si el empleado no está activo / no existe, omitimos el schedule
+    if (!emp) return null
     // Preferir la asignación rápida (turnAssignments) sobre el turnId del schedule
     let turn = null
-    const ta = turnAssignments.find(a => a.employeeId === s.employeeId)
+    const ta = turnAssignments.find(a => String(a.employeeId) === String(s.employeeId))
     if (ta) {
-      turn = turns.find(t => t.id === ta.turnId) || null
+      turn = turns.find(t => String(t.id) === String(ta.turnId)) || null
     } else if (s.turnId) {
-      turn = turns.find(t => t.id === s.turnId) || null
+      turn = turns.find(t => String(t.id) === String(s.turnId)) || null
     }
     return { ...s, _emp: emp, _turn: turn }
-  })
+  }).filter(Boolean)
 
   // Filtros
   const q = filterText.trim().toLowerCase()
@@ -429,7 +436,7 @@ export default function SchedulesPage() {
       <ScheduleForm
         onSave={handleSave}
         initial={editing}
-        employees={employees}
+        employees={enrichedEmployees}
         onCancelEdit={handleCancelEdit}
       />
 
@@ -444,7 +451,7 @@ export default function SchedulesPage() {
             className="rounded-full border border-slate-300 px-3 py-1.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[180px]"
           >
             <option value="">Todos</option>
-            {employees.map(e => (
+            {enrichedEmployees.map(e => (
               <option key={e.id} value={e.id}>
                 {e.name}
               </option>

@@ -77,6 +77,8 @@ export default function TurnsPage() {
   const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
   const [employees, setEmployees] = useState([])
+  const [positions, setPositions] = useState([])
+  const [assignments, setAssignments] = useState([])
   const [turnAssignments, setTurnAssignments] = useState([])
   const [selectedEmployee, setSelectedEmployee] = useState('')
   const [selectedTurnId, setSelectedTurnId] = useState('')
@@ -104,6 +106,8 @@ export default function TurnsPage() {
     try {
       setItems(api.getTurns())
       setEmployees(api.getEmployees())
+      setPositions(api.getPositions ? api.getPositions() : [])
+      setAssignments(api.getAssignments ? api.getAssignments() : [])
       setTurnAssignments(api.getTurnAssignments())
     } catch (err) {
       console.error(err)
@@ -119,6 +123,8 @@ export default function TurnsPage() {
     try {
       setItems(api.getTurns())
       setEmployees(api.getEmployees())
+      setPositions(api.getPositions ? api.getPositions() : [])
+      setAssignments(api.getAssignments ? api.getAssignments() : [])
       setTurnAssignments(api.getTurnAssignments())
     } catch (err) {
       console.error(err)
@@ -272,6 +278,15 @@ export default function TurnsPage() {
 
   const paginatedItems = filteredTurns.slice((page - 1) * pageSize, page * pageSize)
 
+  // Sólo empleados activos deben mostrarse en selects y listas de asignaciones
+  const activeEmployees = employees
+    .filter(e => e.active !== false)
+    .map(e => {
+      const assign = assignments.find(a => String(a.employeeId) === String(e.id))
+      const pos = assign && positions.find(p => String(p.id) === String(assign.positionId))
+      return { ...e, position: pos ? pos.name : undefined }
+    })
+
   return (
     <div className="space-y-6">
       <div className="max-w-7xl mx-auto px-4">
@@ -358,11 +373,14 @@ export default function TurnsPage() {
 
           <form onSubmit={handleQuickAssign} className="flex flex-col gap-3">
             <label className="text-xs text-slate-600">Empleado</label>
-            {(() => {
-              const displayEmp = emp => emp?.name || (emp?.firstName ? `${emp.firstName} ${emp.lastName || ''}` : emp?.id)
-              const selectedEmp = employees.find(e => e.id === selectedEmployee)
+              {(() => {
+              const displayEmp = emp => {
+                const name = emp?.name || (emp?.firstName ? `${emp.firstName} ${emp.lastName || ''}` : emp?.id)
+                return emp?.position ? `${name} (${emp.position})` : name
+              }
+              const selectedEmp = activeEmployees.find(e => e.id === selectedEmployee)
               const inputValue = employeeSelectSearch !== '' ? employeeSelectSearch : (selectedEmp ? displayEmp(selectedEmp) : '')
-              const filtered = employees.filter(emp => {
+              const filtered = activeEmployees.filter(emp => {
                 const hay = displayEmp(emp).toLowerCase()
                 return (employeeSelectSearch || '').trim() === '' ? true : hay.includes(employeeSelectSearch.trim().toLowerCase())
               })
@@ -382,8 +400,8 @@ export default function TurnsPage() {
                     <button type="button" onClick={() => { setEmployeeSelectSearch(''); setSelectedEmployee('') }} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">✕</button>
                   )}
 
-                  {employeeDropdownOpen && (
-                    <div className="absolute z-20 mt-2 w-full max-h-48 overflow-auto rounded-md border bg-white shadow-lg">
+                    {employeeDropdownOpen && (
+                      <div className="absolute z-20 mt-2 w-full max-h-48 overflow-auto rounded-md border bg-white shadow-lg">
                       {filtered.length === 0 ? (
                         <div className="p-2 text-xs text-slate-400">No hay coincidencias</div>
                       ) : (
@@ -461,10 +479,11 @@ export default function TurnsPage() {
 
               <div className="space-y-2 max-h-[55vh] overflow-auto pr-1">
                 {(() => {
-                  const assignments = api.getTurnAssignments().filter(s => (!selectedEmployee || s.employeeId === selectedEmployee) && (!assignFilterTurn || s.turnId === assignFilterTurn))
+                  const activeIds = new Set(activeEmployees.map(e => e.id))
+                  const assignments = api.getTurnAssignments().filter(s => activeIds.has(s.employeeId) && (!selectedEmployee || s.employeeId === selectedEmployee) && (!assignFilterTurn || s.turnId === assignFilterTurn))
                   const searchQ = (assignSearch || '').trim().toLowerCase()
                   const filteredBySearch = searchQ ? assignments.filter(s => {
-                    const empName = (employees.find(e => e.id === s.employeeId)?.name || '').toLowerCase()
+                    const empName = (activeEmployees.find(e => e.id === s.employeeId)?.name || '').toLowerCase()
                     const turnName = (items.find(t => t.id === s.turnId)?.name || '').toLowerCase()
                     return empName.includes(searchQ) || turnName.includes(searchQ)
                   }) : assignments
@@ -472,8 +491,8 @@ export default function TurnsPage() {
 
                   // sort
                   assignments.sort((a, b) => {
-                    const an = (employees.find(e => e.id === a.employeeId)?.name || a.employeeId).toLowerCase()
-                    const bn = (employees.find(e => e.id === b.employeeId)?.name || b.employeeId).toLowerCase()
+                    const an = (activeEmployees.find(e => e.id === a.employeeId)?.name || a.employeeId).toLowerCase()
+                    const bn = (activeEmployees.find(e => e.id === b.employeeId)?.name || b.employeeId).toLowerCase()
                     return an.localeCompare(bn)
                   })
 
@@ -484,7 +503,7 @@ export default function TurnsPage() {
                     <>
                       {pageItems.map(s => {
                         const t = items.find(x => x.id === s.turnId)
-                        const emp = employees.find(e => e.id === s.employeeId)
+                        const emp = activeEmployees.find(e => e.id === s.employeeId)
                         return (
                           <div key={s.id} className="flex items-center justify-between gap-2 bg-white p-2 rounded-md border border-slate-100">
                             <div className="text-sm">
@@ -501,7 +520,7 @@ export default function TurnsPage() {
                       })}
 
                       <div className="mt-2">
-                        <Pagination total={api.getTurnAssignments().length} page={assignPage} setPage={setAssignPage} pageSize={assignPageSize} setPageSize={setAssignPageSize} />
+                        <Pagination total={api.getTurnAssignments().filter(s => activeIds.has(s.employeeId)).length} page={assignPage} setPage={setAssignPage} pageSize={assignPageSize} setPageSize={setAssignPageSize} />
                       </div>
                     </>
                   )
@@ -529,7 +548,7 @@ export default function TurnsPage() {
         }}
         onConfirm={handleConfirmDelete}
       />
-      <AssignmentModal assignment={editingAssignment} employees={employees} turns={items} onSave={saveAssignmentEdit} onCancel={() => setEditingAssignment(null)} />
+      <AssignmentModal assignment={editingAssignment} employees={activeEmployees} turns={items} onSave={saveAssignmentEdit} onCancel={() => setEditingAssignment(null)} />
       </div>
     </div>
   )

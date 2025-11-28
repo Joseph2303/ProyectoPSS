@@ -4,8 +4,19 @@ import { api } from '../api/mockApi'
 
 const WEEKDAY_MAP = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
-function timeNowStr() {
-  const d = new Date()
+// timeNowStr defined below with optional timestamp support
+
+function toLocalYYYYMMDD(ts) {
+  const d = ts ? new Date(ts) : new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+// allow optional timestamp so callers can use the same clock (nowTick)
+function timeNowStr(ts) {
+  const d = ts ? new Date(ts) : new Date()
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${hh}:${mm}`
@@ -22,10 +33,11 @@ function isScheduleActive(sch, turns, nowStr, today) {
   if (!sch) return false
   if (sch.startDate && today < sch.startDate) return false
   if (sch.endDate && today > sch.endDate) return false
-  const weekday = WEEKDAY_MAP[new Date().getDay()]
+  // compute weekday from provided `today` (local date YYYY-MM-DD)
+  const weekday = WEEKDAY_MAP[new Date((today || toLocalYYYYMMDD()).concat('T00:00:00')).getDay()]
   if (sch.days && sch.days.length && !sch.days.includes(weekday)) return false
   if (sch.turnId) {
-    const turn = turns.find(t => t.id === sch.turnId)
+    const turn = turns.find(t => String(t.id) === String(sch.turnId))
     if (turn) {
       // Mostrar empleado 20 minutos antes del inicio del turno
       const earlyMinutes = 20
@@ -54,63 +66,55 @@ function isScheduleActive(sch, turns, nowStr, today) {
   return true
 }
 
-function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, nowTick, breakDefaults, requestConfirm, markedRows, setMarkedRows }) {
+function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, nowTick, breakDefaults, requestConfirm, markedRows, setMarkedRows, schedules }) {
   const [input, setInput] = useState('')
 
-  // helper to compute open break of a type
   const openBreak = (type) =>
     keys
-      .filter(k => k.employeeId === emp.id && k.type === 'break_start' && !k.closedAt && k.meta?.breakType === type)
+      .filter(k => String(k.employeeId) === String(emp.id) && k.type === 'break_start' && !k.closedAt && k.meta?.breakType === type)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
 
   const openBreakAlm = openBreak('almuerzo')
   const openBreakDes = openBreak('desayuno_cafe')
 
-  // determine row status: active (open shift), late, absent, or idle
   const openIn = keys
-    .filter(k => k.employeeId === emp.id && k.type === 'shift_in' && !k.closedAt)
+    .filter(k => String(k.employeeId) === String(emp.id) && k.type === 'shift_in' && !k.closedAt)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
 
   const now = new Date(nowTick)
-  const todayStr = new Date(nowTick).toISOString().slice(0, 10)
+  const todayStr = toLocalYYYYMMDD(nowTick)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
-  const turn = turns.find(t => t.id === defaultTurnId)
-  let status = 'idle' // idle = no special color
-  if (openIn) {
-    status = 'active'
-  } else if (turn && turn.startTime) {
+  // si hay un shift_in abierto, usar su turnId para mostrar la jornada actual
+  const displayTurnId = openIn?.turnId || defaultTurnId
+  // elegir el turno a usar para calcular estado (preferir openIn.turnId)
+  const turn = turns.find(t => String(t.id) === String(displayTurnId))
+  let status = 'idle'
+  if (openIn) status = 'active'
+  else if (turn && turn.startTime) {
     const [sh, sm] = turn.startTime.split(':').map(s => parseInt(s || '0', 10))
     const startMinutes = (isNaN(sh) ? 0 : sh) * 60 + (isNaN(sm) ? 0 : sm)
-      const lateThreshold = 5 // minutes tardía
-      const absentThreshold = 15 // minutos para considerarla ausente
-
-      if (nowMinutes >= startMinutes + absentThreshold) {
-        status = 'absent'
-      } else if (nowMinutes >= startMinutes + lateThreshold) {
-        status = 'late'
-    }
+    const lateThreshold = 5
+    const absentThreshold = 15
+    if (nowMinutes >= startMinutes + absentThreshold) status = 'absent'
+    else if (nowMinutes >= startMinutes + lateThreshold) status = 'late'
   }
 
   const statusClass = status === 'active' ? 'bg-emerald-50' : status === 'late' ? 'bg-amber-50' : status === 'absent' ? 'bg-red-50' : ''
 
-  // allow only one 'shift_in' per day: detect if there's already a start today
-  const hasStartedToday = keys.some(k => k.employeeId === emp.id && k.type === 'shift_in' && new Date(k.createdAt).toISOString().slice(0,10) === todayStr)
-
-  // don't allow marking if employee is absent
+  const hasStartedToday = keys.some(k => String(k.employeeId) === String(emp.id) && k.type === 'shift_in' && new Date(k.createdAt).toISOString().slice(0,10) === todayStr)
   const disableMarkForAbsent = status === 'absent'
 
-  // if the employee already had a shift today that was closed (even if closed early), block options
   const lastShiftToday = keys
-    .filter(k => k.employeeId === emp.id && k.type === 'shift_in' && new Date(k.createdAt).toISOString().slice(0,10) === todayStr)
+    .filter(k => String(k.employeeId) === String(emp.id) && k.type === 'shift_in' && new Date(k.createdAt).toISOString().slice(0,10) === todayStr)
     .sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt))[0]
   const closedEarlier = lastShiftToday && lastShiftToday.closedAt && new Date(lastShiftToday.closedAt) <= new Date(nowTick)
 
   const disableAll = disableMarkForAbsent || closedEarlier
   const isMarked = Array.isArray(markedRows) && markedRows.includes(emp.id)
   const enabled = !disableAll && (openIn || isMarked)
-  // build sessions (shift_in with items) and loose items
+
   const empKeys = keys
-    .filter(k => k.employeeId === emp.id)
+    .filter(k => String(k.employeeId) === String(emp.id))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
 
   const sessions = []
@@ -124,43 +128,68 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
       if (current && !current.start.closedAt) {
         current.start.closedAt = k.createdAt
         current = null
-      } else {
-        loose.push(k)
-      }
-    } else {
-      if (current) current.items.push(k)
-      else loose.push(k)
+        } else loose.push(k)
     }
   }
 
-  // short timeline (most recent first)
   const timeline = []
   for (const s of sessions) timeline.push({ type: 'session', time: new Date(s.start.createdAt), session: s })
   for (const l of loose) timeline.push({ type: 'loose', time: new Date(l.createdAt), item: l })
   timeline.sort((a, b) => b.time - a.time)
 
-  const recent = timeline.slice(0, 5)
+  // preparar nombre de jornada a mostrar: buscar por displayTurnId, si no hay, intentar buscar en schedules activo
+  const displayTurnName = (() => {
+    // DEBUG: inspeccionar por qué no se encuentra la jornada
+    try {
+      console.debug('EmployeeRow debug:', { empId: emp.id, displayTurnId, openIn: openIn ? { id: openIn.id, turnId: openIn.turnId } : null })
+    } catch (e) {}
+    if (displayTurnId) {
+      const t = turns.find(tt => String(tt.id) === String(displayTurnId))
+      try { console.debug('Found turn by displayTurnId', { found: !!t, turn: t }) } catch(e) {}
+      if (t) return t.name
+    }
+    // fallback: buscar schedule activo para este empleado
+    const nowStr = timeNowStr(nowTick)
+    const s = schedules && schedules.find(sc => String(sc.employeeId) === String(emp.id) && isScheduleActive(sc, turns, nowStr, todayStr))
+    try { console.debug('Found schedule for emp', { empId: emp.id, schedule: s }) } catch(e) {}
+    if (s) {
+      // si schedule trae turnId, preferirlo
+      if (s.turnId) {
+        const t2 = turns.find(tt => String(tt.id) === String(s.turnId))
+        try { console.debug('Found turn by schedule.turnId', { found: !!t2, turn: t2 }) } catch(e) {}
+        if (t2) return t2.name
+      }
+      // si schedule no tiene turnId, intentar fallback a turnAssignments (quick mapping)
+      try {
+        const ta = typeof api.getTurnAssignments === 'function' ? api.getTurnAssignments().find(x => String(x.employeeId) === String(emp.id)) : null
+        if (ta && ta.turnId) {
+          const t3 = turns.find(tt => String(tt.id) === String(ta.turnId))
+          try { console.debug('Found turn by turnAssignment', { found: !!t3, turn: t3, turnAssignment: ta }) } catch(e) {}
+          if (t3) return t3.name
+        }
+      } catch(e) {}
+    }
+    return '—'
+  })()
+
+  // debug visible en UI para diagnosticar por qué no se encuentra la jornada
+  // debug (removed visible output)
 
   return (
     <tr className={statusClass}>
-      {/* Acción */}
       <td className="px-3 py-3 align-top">
         <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             {disableMarkForAbsent ? (
               <div className="rounded-full px-3 py-1 text-xs font-semibold text-slate-500 bg-slate-100">Ausente</div>
             ) : (
               <button
                 onClick={() => {
-                  // If the shift was closed earlier, block any action
                   if (closedEarlier) return
-                  // don't allow starting a new shift if already started today
                   if (!openIn && hasStartedToday) return
-
                   if (openIn) {
                     requestConfirm(`Confirmar cierre de turno de ${emp.name}? Se registrará la hora de salida.`, () => onAddKey(emp.id, 'SALIDA', 'shift_out'))
                   } else {
-                    // mark row and create shift_in
                     setMarkedRows(prev => Array.from(new Set([...(prev || []), emp.id])))
                     onAddKey(emp.id, 'ENTRADA', 'shift_in')
                   }
@@ -176,18 +205,19 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
         </div>
       </td>
 
-      {/* Empleado */}
+
       <td className="px-3 py-3 align-top">
         <div className="text-sm font-medium">{emp.name}</div>
-        <div className="text-[12px] text-slate-500">{emp.position}</div>
       </td>
 
-      {/* Turno (mostrar id o nombre) */}
       <td className="px-3 py-3 align-top">
-        <div className="text-sm text-slate-700">{turns.find(t => t.id === defaultTurnId)?.name || '—'}</div>
+        <div className="text-[12px] text-slate-500">{emp.position || '—'}</div>
       </td>
 
-      {/* Descansos rápidos */}
+      <td className="px-3 py-3 align-top">
+        <div className="text-sm text-slate-700">{displayTurnName}</div>
+      </td>
+
       <td className="px-3 py-3 align-top">
         <div className="space-y-2">
           <div className="rounded-md overflow-hidden border border-slate-300 bg-slate-200">
@@ -215,7 +245,8 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
                   if (!enabled) return
                   if (openBreakDes) onCloseKey(openBreakDes.id)
                   else onAddKey(emp.id, 'Desayuno/Café', 'break_start', { breakType: 'desayuno_cafe', duration: breakDefaults.desayuno })
-                }}
+                }
+                }
                 disabled={!enabled}
                 className={`rounded-full ${!enabled ? 'bg-gray-400 opacity-60 cursor-not-allowed' : 'bg-cyan-900 hover:bg-cyan-800'} px-4 py-2 text-xs font-semibold text-white shadow-sm transition`}
               >
@@ -226,15 +257,11 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
         </div>
       </td>
 
-      {/* columna 'Registrar clave' eliminada */}
-
-      {/* CLAVES ABIERTAS + HISTORIAL */}
       <td className="px-3 py-3 align-top">
         <div className="space-y-3">
-          {/* Claves abiertas */}
           <div className="flex flex-wrap gap-2">
             {keys
-              .filter(k => k.employeeId === emp.id && !k.closedAt)
+              .filter(k => String(k.employeeId) === String(emp.id) && !k.closedAt)
               .map(k => (
                 <div key={k.id} className="flex items-center gap-2 rounded-full bg-slate-900 text-white px-3 py-1 text-[11px] shadow-sm">
                   <div className="flex flex-col leading-tight">
@@ -262,10 +289,9 @@ function EmployeeRow({ emp, turns, keys, onAddKey, onCloseKey, defaultTurnId, no
               ))}
           </div>
 
-          {/* Historial corto */}
           <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2 max-h-40 overflow-y-auto">
             {keys
-              .filter(k => k.employeeId === emp.id)
+              .filter(k => String(k.employeeId) === String(emp.id))
               .slice(-5)
               .reverse()
               .map(h => {
@@ -300,6 +326,8 @@ export default function KeysPage() {
   const [employees, setEmployees] = useState([])
   const [turns, setTurns] = useState([])
   const [schedules, setSchedules] = useState([])
+  const [positions, setPositions] = useState([])
+  const [assignments, setAssignments] = useState([])
   const [activeEmployees, setActiveEmployees] = useState([])
   const [markedRows, setMarkedRows] = useState([])
   const [nowTick, setNowTick] = useState(Date.now())
@@ -325,35 +353,48 @@ export default function KeysPage() {
     const es = api.getEmployees()
     const ts = api.getTurns()
     const ss = api.getSchedules()
+    const ps = api.getPositions ? api.getPositions() : []
+    const as = api.getAssignments ? api.getAssignments() : []
+
     setKeys(ks)
-    setEmployees(es)
     setTurns(ts)
     setSchedules(ss)
+    setPositions(ps)
+    setAssignments(as)
 
-    const nowStr = timeNowStr()
-    const today = new Date().toISOString().slice(0, 10)
+    // enriquecer empleados con su puesto (si aplica)
+    const enriched = es.map(e => {
+      const assign = as.find(a => String(a.employeeId) === String(e.id))
+      const pos = assign && ps.find(p => String(p.id) === String(assign.positionId))
+      return { ...e, position: pos ? pos.name : undefined }
+    })
+    setEmployees(enriched)
+
+    const now = new Date()
+    const nowStr = timeNowStr(now.getTime())
+    const today = toLocalYYYYMMDD(now.getTime())
+
     // empleados según su schedule activo, pero excluir quienes ya tuvieron ausencia hoy
-    let active = es.filter(emp => {
-      const schActive = ss.some(s => s.employeeId === emp.id && isScheduleActive(s, ts, nowStr, today))
-      const hasAbsentToday = ks.some(k => k.employeeId === emp.id && k.type === 'absent' && new Date(k.createdAt).toISOString().slice(0,10) === today)
+    let active = enriched.filter(emp => {
+      const schActive = ss.some(s => String(s.employeeId) === String(emp.id) && isScheduleActive(s, ts, nowStr, today))
+      const hasAbsentToday = ks.some(k => String(k.employeeId) === String(emp.id) && k.type === 'absent' && new Date(k.createdAt).toISOString().slice(0,10) === today)
       return schActive && !hasAbsentToday
     })
 
     // Crear automáticamente una clave 'absent' (cerrada) para empleados que ya sean considerados ausentes
     // y que no tengan registro de inicio ni de ausencia hoy. Evita duplicados por día.
-    const now = new Date()
     const nowMinutes = now.getHours() * 60 + now.getMinutes()
     const absentThreshold = 15 // minutos para considerar ausencia
     const lateThreshold = 5 // minutos para considerar tardanza
 
     for (const emp of active) {
-      const hasStartToday = ks.some(k => k.employeeId === emp.id && k.type === 'shift_in' && new Date(k.createdAt).toISOString().slice(0,10) === today)
-      const hasAbsentToday = ks.some(k => k.employeeId === emp.id && k.type === 'absent' && new Date(k.createdAt).toISOString().slice(0,10) === today)
+      const hasStartToday = ks.some(k => String(k.employeeId) === String(emp.id) && k.type === 'shift_in' && toLocalYYYYMMDD(k.createdAt) === today)
+      const hasAbsentToday = ks.some(k => String(k.employeeId) === String(emp.id) && k.type === 'absent' && toLocalYYYYMMDD(k.createdAt) === today)
       if (hasStartToday || hasAbsentToday) continue
 
       // intentar determinar turno activo para este empleado desde sus schedules
-      const sch = ss.find(s => s.employeeId === emp.id && isScheduleActive(s, ts, nowStr, today))
-      const turn = sch ? ts.find(t => t.id === sch.turnId) : null
+      const sch = ss.find(s => String(s.employeeId) === String(emp.id) && isScheduleActive(s, ts, nowStr, today))
+      const turn = sch ? ts.find(t => String(t.id) === String(sch.turnId)) : null
       if (!turn || !turn.startTime) continue
 
       const parseHHMM = (s) => {
@@ -365,7 +406,7 @@ export default function KeysPage() {
       if (startMin == null) continue
 
       // Crear clave automática de tardanza si pasó el umbral de tardanza y aún no marcó
-      const hasLateToday = ks.some(k => k.employeeId === emp.id && k.type === 'late' && new Date(k.createdAt).toISOString().slice(0,10) === today)
+      const hasLateToday = ks.some(k => String(k.employeeId) === String(emp.id) && k.type === 'late' && toLocalYYYYMMDD(k.createdAt) === today)
       if (!hasLateToday && nowMinutes >= startMin + lateThreshold && nowMinutes < startMin + absentThreshold) {
         try {
           const k = api.addKey({ employeeId: emp.id, turnId: turn.id, clave: 'TARDANZA', type: 'late' })
@@ -383,9 +424,9 @@ export default function KeysPage() {
     }
 
     // añadir empleados que tengan un shift_in abierto (no cerrados) aunque el schedule ya haya terminado
-    const employeesWithOpenShiftIds = new Set(api.getKeys().filter(k => k.type === 'shift_in' && !k.closedAt).map(k => k.employeeId))
-    for (const emp of es) {
-      if (employeesWithOpenShiftIds.has(emp.id) && !active.find(a => a.id === emp.id)) {
+    const employeesWithOpenShiftIds = new Set(api.getKeys().filter(k => k.type === 'shift_in' && !k.closedAt).map(k => String(k.employeeId)))
+    for (const emp of enriched) {
+      if (employeesWithOpenShiftIds.has(String(emp.id)) && !active.find(a => String(a.id) === String(emp.id))) {
         active.push(emp)
       }
     }
@@ -393,10 +434,10 @@ export default function KeysPage() {
     // refrescar keys en memoria por si se crearon ausencias y recalcular active para excluir nuevas ausencias
     const refreshedKeys = api.getKeys()
     setKeys(refreshedKeys)
-    active = es.filter(emp => {
-      const schActive = ss.some(s => s.employeeId === emp.id && isScheduleActive(s, ts, nowStr, today))
-      const hasAbsentToday = refreshedKeys.some(k => k.employeeId === emp.id && k.type === 'absent' && new Date(k.createdAt).toISOString().slice(0,10) === today)
-      return (schActive || employeesWithOpenShiftIds.has(emp.id)) && !hasAbsentToday
+    active = enriched.filter(emp => {
+      const schActive = ss.some(s => String(s.employeeId) === String(emp.id) && isScheduleActive(s, ts, nowStr, today))
+      const hasAbsentToday = refreshedKeys.some(k => String(k.employeeId) === String(emp.id) && k.type === 'absent' && toLocalYYYYMMDD(k.createdAt) === today)
+      return (schActive || employeesWithOpenShiftIds.has(String(emp.id))) && !hasAbsentToday
     })
     setActiveEmployees(active)
   }
@@ -420,9 +461,10 @@ export default function KeysPage() {
   }, [activeEmployees])
 
   function defaultTurnForEmployee(emp) {
-    const nowStr = timeNowStr()
-    const today = new Date().toISOString().slice(0, 10)
-    const s = schedules.find(sc => sc.employeeId === emp.id && isScheduleActive(sc, turns, nowStr, today))
+    const nowStr = timeNowStr(nowTick)
+    const today = toLocalYYYYMMDD(nowTick)
+    // normalizar comparaciones de IDs para evitar fallos por number/string
+    const s = schedules.find(sc => String(sc.employeeId) === String(emp.id) && isScheduleActive(sc, turns, nowStr, today))
     return s?.turnId || ''
   }
 
@@ -520,14 +562,15 @@ export default function KeysPage() {
               <tr className="text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2 text-left font-semibold">Acción</th>
                 <th className="px-3 py-2 text-left font-semibold">Empleado</th>
-                <th className="px-3 py-2 text-left font-semibold">Turno</th>
+                <th className="px-3 py-2 text-left font-semibold">Puesto</th>
+                <th className="px-3 py-2 text-left font-semibold">Jornada</th>
                 <th className="px-3 py-2 text-left font-semibold">Descansos rápidos</th>
                 <th className="px-3 py-2 text-left font-semibold">Historial de Marcas</th>
               </tr>
             </thead>
             
             <tbody>
-              {filteredEmployees.length === 0 && (<tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">No hay coincidencias con la búsqueda o no hay personas en servicio.</td></tr>)}
+              {filteredEmployees.length === 0 && (<tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">No hay coincidencias con la búsqueda o no hay personas en servicio.</td></tr>)}
               {filteredEmployees.map(emp => (
                 <EmployeeRow
                   key={emp.id}
@@ -542,6 +585,7 @@ export default function KeysPage() {
                   requestConfirm={requestConfirm}
                   markedRows={markedRows}
                   setMarkedRows={setMarkedRows}
+                  schedules={schedules}
                 />
               ))}
             </tbody>

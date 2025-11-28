@@ -2,9 +2,9 @@ const LOCAL_KEY = 'ci_frontend_store_v1'
 
 const SAMPLE = {
   employees: [
-    { id: 'e1', name: 'Juan Pérez' },
-    { id: 'e2', name: 'María García' },
-    { id: 'e3', name: 'Luis Torres' }
+    { id: 'e1', name: 'Juan Pérez', firstName: 'Juan', lastName: 'Pérez', email: 'juan.perez@example.com', phone: '+541112345678', cedula: '12345678', address: 'Calle Falsa 123', emergencyContact: 'Ana Pérez (+541198765432)', active: true },
+    { id: 'e2', name: 'María García', firstName: 'María', lastName: 'García', email: 'maria.garcia@example.com', phone: '+541112345679', cedula: '87654321', address: 'Av. Siempre Viva 742', emergencyContact: 'Carlos García (+541191234567)', active: true },
+    { id: 'e3', name: 'Luis Torres', firstName: 'Luis', lastName: 'Torres', email: 'luis.torres@example.com', phone: '+541112345680', cedula: '11223344', address: 'Boulevard 45 #10', emergencyContact: 'María Torres (+541197654321)', active: true }
   ],
   turns: [
     // Jornadas fijas básicas
