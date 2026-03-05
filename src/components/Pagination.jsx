@@ -25,16 +25,17 @@ export default function Pagination({
   }
 
   return (
-    <div className="px-4 py-3 flex items-center justify-between border-t border-slate-100 bg-white">
+    <div className="border-t border-slate-100 bg-white px-3 py-3 sm:px-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="text-xs text-slate-600">
         Mostrando {total === 0 ? 0 : (page - 1) * pageSize + 1} - {Math.min(total, page * pageSize)} de {total}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
         <select
           value={pageSize}
           onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
-          className="text-xs rounded-full border border-slate-200 px-2 py-1 bg-white"
+          className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-1 text-xs"
         >
           {sizes.map(s => (
             <option key={s} value={s}>{s} / página</option>
@@ -79,6 +80,7 @@ export default function Pagination({
             ›
           </button>
         </div>
+      </div>
       </div>
     </div>
   )

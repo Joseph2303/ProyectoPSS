@@ -548,7 +548,7 @@ export default function KeysPage() {
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex-1 min-w-[260px]"><input type="text" placeholder="Buscar empleado o puesto..." value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-800"/></div>
+        <div className="w-full flex-1 min-w-[220px] sm:min-w-[260px]"><input type="text" placeholder="Buscar empleado o puesto..." value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-800"/></div>
         <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
           <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-blue-600" checked={onlyWithOpenKeys} onChange={e=>setOnlyWithOpenKeys(e.target.checked)} />
           <span>Mostrar solo quienes tienen claves abiertas</span>
@@ -557,7 +557,7 @@ export default function KeysPage() {
 
       <div className="mt-2 rounded-xl border border-slate-100 bg-white">
         <div className="max-h-[70vh] overflow-auto">
-          <table className="min-w-full table-auto border-collapse text-sm">
+          <table className="min-w-[1080px] table-auto border-collapse text-sm md:min-w-full">
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <tr className="text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2 text-left font-semibold">Acción</th>

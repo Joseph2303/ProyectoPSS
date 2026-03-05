@@ -348,7 +348,8 @@ export default function EmployeesPage() {
 
       {/* TABLA */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="min-w-full border-collapse text-sm">
+        <div className="overflow-x-auto">
+        <table className="min-w-[980px] border-collapse text-sm md:min-w-full">
           <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
             <tr className="text-slate-600 text-xs uppercase tracking-wide">
               <th className="px-4 py-2 text-left">Nombre</th>
@@ -442,6 +443,7 @@ export default function EmployeesPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       <Pagination
         total={filteredItems.length}

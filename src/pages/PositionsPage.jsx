@@ -57,13 +57,14 @@ export default function PositionsPage(){
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl p-4 border border-slate-200">
           <h3 className="text-sm font-semibold mb-3">Puestos</h3>
-          <form onSubmit={savePosition} className="flex gap-2">
-            <input value={posForm.name} onChange={e=>setPosForm({ name: e.target.value })} placeholder="Nombre del puesto" className="flex-1 rounded-full border px-3 py-2 text-sm" />
-            <button className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm">{editing? 'Actualizar' : 'Crear'}</button>
+          <form onSubmit={savePosition} className="flex flex-wrap gap-2">
+            <input value={posForm.name} onChange={e=>setPosForm({ name: e.target.value })} placeholder="Nombre del puesto" className="w-full flex-1 rounded-full border px-3 py-2 text-sm sm:w-auto" />
+            <button className="w-full rounded-full bg-blue-600 px-4 py-2 text-sm text-white sm:w-auto">{editing? 'Actualizar' : 'Crear'}</button>
           </form>
 
           <div className="mt-4 overflow-hidden rounded-md border">
-            <table className="min-w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="min-w-[420px] text-sm md:min-w-full">
               <thead className="bg-slate-50 text-xs text-slate-600">
                 <tr>
                   <th className="px-4 py-2 text-left">Puesto</th>
@@ -90,6 +91,7 @@ export default function PositionsPage(){
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -173,7 +175,8 @@ export default function PositionsPage(){
 
           <div className="mt-4 overflow-hidden rounded-md border">
             <h4 className="sr-only">Asignaciones actuales</h4>
-            <table className="min-w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="min-w-[580px] text-sm md:min-w-full">
               <thead className="bg-slate-50 text-xs text-slate-600">
                 <tr>
                   <th className="px-4 py-2 text-left">Empleado</th>
@@ -212,6 +215,7 @@ export default function PositionsPage(){
                 })()}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>

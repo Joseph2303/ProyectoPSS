@@ -486,7 +486,7 @@ export default function SchedulesPage() {
           <span className="font-semibold text-slate-600">
             Rango de fechas (desde / hasta)
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="date"
               value={filterRangeStart}
@@ -555,9 +555,9 @@ export default function SchedulesPage() {
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="max-h-[60vh] overflow-auto">
-          <table className="min-w-full border-collapse text-sm">
+          <table className="min-w-[880px] border-collapse text-sm md:min-w-full">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr className="text-xs uppercase tracking-wide text-slate-600">
                 <th className="px-4 py-2 text-left">Empleado</th>

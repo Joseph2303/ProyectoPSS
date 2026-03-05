@@ -323,25 +323,25 @@ export default function ReportsPage(){
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Reportes</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <select value={selectedEmployeeId} onChange={e=>setSelectedEmployeeId(e.target.value)} className="rounded-full border border-slate-200 px-3 py-1 text-sm bg-white">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <select value={selectedEmployeeId} onChange={e=>setSelectedEmployeeId(e.target.value)} className="w-full rounded-full border border-slate-200 bg-white px-3 py-1 text-sm sm:w-auto">
             <option value="">Todos los empleados</option>
             {employees.map(emp => (<option key={emp.id} value={emp.id}>{emp.name}</option>))}
           </select>
-          <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="rounded-full border border-slate-200 px-3 py-1 text-sm bg-white" />
-          <button onClick={() => { setSelectedEmployeeId(''); setSelectedDate('') }} className="rounded-full border border-slate-200 px-3 py-1 text-sm">Borrar filtros</button>
-          <button onClick={doExport} className="rounded-full bg-blue-600 text-white px-3 py-1 text-sm">Exportar</button>
-          <button onClick={refresh} className="rounded-full border border-slate-200 px-3 py-1 text-sm">Refrescar</button>
+          <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="w-full rounded-full border border-slate-200 bg-white px-3 py-1 text-sm sm:w-auto" />
+          <button onClick={() => { setSelectedEmployeeId(''); setSelectedDate('') }} className="w-full rounded-full border border-slate-200 px-3 py-1 text-sm sm:w-auto">Borrar filtros</button>
+          <button onClick={doExport} className="w-full rounded-full bg-blue-600 px-3 py-1 text-sm text-white sm:w-auto">Exportar</button>
+          <button onClick={refresh} className="w-full rounded-full border border-slate-200 px-3 py-1 text-sm sm:w-auto">Refrescar</button>
         </div>
       </div>
 
       <div className="rounded-xl border border-slate-100 bg-white">
         <div className="max-h-[70vh] overflow-auto">
-          <table className="min-w-full table-auto border-collapse text-sm">
+          <table className="min-w-[1080px] table-auto border-collapse text-sm md:min-w-full">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr className="text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2 text-left font-semibold">Fecha</th>
@@ -426,7 +426,7 @@ export default function ReportsPage(){
                   <td className="px-3 py-3 align-middle text-sm text-slate-700">
                     {editingReportId === r.id ? (
                       <div className="flex items-start gap-2">
-                        <textarea value={editingNotes} onChange={e=>setEditingNotes(e.target.value)} className="w-60 rounded-md border border-slate-200 p-2 text-sm" />
+                        <textarea value={editingNotes} onChange={e=>setEditingNotes(e.target.value)} className="w-full max-w-xs rounded-md border border-slate-200 p-2 text-sm sm:w-60" />
                         <div className="flex flex-col gap-2">
                           <button onClick={saveEditNotes} className="rounded-md px-3 py-1 bg-blue-600 text-white text-sm">Guardar</button>
                           <button onClick={cancelEditNotes} className="rounded-md px-3 py-1 bg-gray-100 text-sm">Cancelar</button>
